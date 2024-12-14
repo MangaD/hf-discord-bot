@@ -9,6 +9,18 @@ import io
 import re
 from .utils.FFmpegPCMAudioGTTS import FFmpegPCMAudioGTTS
 
+media_only_channels = [
+	media_channel,
+	artwork_channel,
+	hf_memes_channel
+]
+
+media_url_regexps = [
+	"((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?", # youtube
+	"https?:\/\/.*\/.*\.(png|gif|webp|jpeg|jpg)\??.*", # image
+	"https:\/\/(?:www\.)?deviantart.com\/.+" # deviantart
+]
+
 def mentionsToNicks(msg):
 	str = msg.content
 	#print (str)
@@ -106,7 +118,7 @@ async def on_message(message):
 	await tts_f(message, client)
 
 	# Remove text messages in #media
-	if (message.channel.id == media_channel) and (len(message.attachments) == 0):
+	if (message.channel.id in media_only_channels) and (len(message.attachments) == 0 and not any(re.compile(r).match(message.content) for r in media_url_regexps)):
 		try:
 			await message.delete()
 			#await message.channel.send('Text messages are not allowed in this channel. If you wish to comment on a picture you may create a thread.'.format(message))

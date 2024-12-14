@@ -27,8 +27,10 @@ pvp_id = 234395541453275136
 mangad_id = 222030109606019073
 
 domain_of_hf_bot_channel = 337250141083795456
+artwork_channel = 891010482348105798
 media_channel = 402476955003387905
 introductions_channel = 860197524967391262
+hf_memes_channel = 394188677229576224
 
 class MyGlobals(object):
 	last_message = None

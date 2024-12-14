@@ -55,12 +55,9 @@ class HeroFighter(commands.Cog):
 	async def download(self, ctx):
 		"""Provides the link for downloading HF and RS."""
 		await ctx.channel.send('**HFX (mobile):** <https://hf-empire.com/hfx-empire/download>\n'
-		                      '**HFv0.7+ w/ RS (PC):** <https://www.mediafire.com/file/6ik4w1t1qsd4ci1/HFv0.7%252B.zip/file>\n'
-		                      '**Room Server:** <https://www.mediafire.com/file/s1ehbcqqtzvycve/RS_v0.7%252B_2021-01-21.zip/file>\n'
-		                      '**HF Workshop:** <https://hf-empire.com/downloads/hf-workshop/HFWorkshop_x86.exe>\n'
-		                      '**HF Equilibrium (mod):** <https://hf-empire.com/forum/showthread.php?tid=339>\n'
-		                      '**HFE BD Skin (mod):** <https://hf-empire.com/forum/showthread.php?tid=328>\n'
-		                      '**ALL MODS:** <https://hf-empire.com/forum/forumdisplay.php?fid=37>');
+		                      '**HFv0.7+ w/ RS (PC):** <https://hf-empire.com/hf-empire/downloads>\n'
+		                      '**HF Workshop:** <https://hf-empire.com/forum/showthread.php?tid=317>\n'
+		                      '**ALL MODS:** <https://cloud.hf-empire.top/s/aPktW>');
 
 	@commands.command(description='Checks if the Hero Fighter v0.7 services are up and running.')
 	async def status(self, ctx):

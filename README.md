@@ -41,7 +41,9 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
 ### Features
 
 - In the Hero Fighter server, tells the user to introduce himself in the `#introductions` channel when he joins. Or welcomes him back if he already introduced himself in the past.
-- Removes text messages in the `#media` channel of the Hero Fighter server.
+- Removes text messages (unless youtube, deviantart, or image links) in the `#media`, `#artwork`, and `#hf_memes` channels of the Hero Fighter server.
+- In the Hero Fighter server, assigns the 'Bandit' role to a member that had this role and tried to rejoin.
+- In the Hero Fighter server, assigns the 'Chinese' role to a member that joins and has Chinese characters in the name. 
 
 ### Commands
 
@@ -101,3 +103,6 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - Check tutorial: https://vcokltfre.dev/tutorial/
 - Create reminder command (look into RoboDanny)
   - use sqlite
+- Store members (roles, notes, etc) and chat history in database. When a member rejoins, the roles are re-attributed.
+- Look for a word in the Oxford and Cambridge dictionaries.
+- Unit tests: https://www.youtube.com/watch?v=1Lfv5tUGsn8
