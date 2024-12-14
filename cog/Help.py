@@ -45,5 +45,5 @@ class Help(commands.Cog): # Class shows as category in ".help" command
 		await ctx.channel.send(embed=embed)
 
 
-def setup(client):
-	client.add_cog(Help(client))
+async def setup(client):
+	await client.add_cog(Help(client))

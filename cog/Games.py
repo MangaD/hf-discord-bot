@@ -80,5 +80,5 @@ class Games(commands.Cog): # Class shows as category in ".help" command
 		return await ctx.channel.send('Invalid input. For instructions, type: _.tfs_')
 
 
-def setup(client):
-	client.add_cog(Games(client))
+async def setup(client):
+	await client.add_cog(Games(client))

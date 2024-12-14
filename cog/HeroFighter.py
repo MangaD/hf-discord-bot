@@ -141,5 +141,5 @@ class HeroFighter(commands.Cog):
 		else:
 			return await ctx.channel.send(message)
 
-def setup(client):
-    client.add_cog(HeroFighter(client))
+async def setup(client):
+    await client.add_cog(HeroFighter(client))

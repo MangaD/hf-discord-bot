@@ -10,7 +10,7 @@ import re # wrap links in < >
 # Intents were added in v1.5
 # An intent basically allows a bot to subscribe into specific buckets of events.
 # https://discordpy.readthedocs.io/en/latest/intents.html
-intents = discord.Intents(messages=True, guilds=True, members=True, presences=True, voice_states=True)
+intents = discord.Intents(messages=True, guilds=True, members=True, presences=True, voice_states=True, message_content=True)
 member_cache_flags = discord.MemberCacheFlags.all()
 
 bot_prefix = "."
@@ -31,6 +31,7 @@ artwork_channel = 891010482348105798
 media_channel = 402476955003387905
 introductions_channel = 860197524967391262
 hf_memes_channel = 394188677229576224
+memes_channel = 933263833324220457
 
 class MyGlobals(object):
 	last_message = None

@@ -58,5 +58,5 @@ class Moderation(commands.Cog): # Class shows as category in ".help" command
 			return await ctx.channel.send(error)
 
 
-def setup(client):
-        client.add_cog(Moderation(client))
+async def setup(client):
+        await client.add_cog(Moderation(client))

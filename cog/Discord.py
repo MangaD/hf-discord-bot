@@ -74,7 +74,7 @@ class Discord(commands.Cog):
 		embed.add_field(name="Text channels", value=text_channel_count, inline=True)
 		embed.add_field(name="Voice channels", value=voice_channel_count, inline=True)
 		embed.add_field(name="Created at", value=created_at, inline=True)
-		embed.add_field(name="Region", value=guild.region, inline=True)
+		embed.add_field(name="Locale", value=guild.preferred_locale, inline=True)
 		embed.add_field(name="Roles", value=len(guild.roles)-1, inline=True)
 		embed.add_field(name="Features", value=features, inline=True)
 		if guild.emojis:
@@ -156,5 +156,5 @@ class Discord(commands.Cog):
 		embed.add_field(name="Discord.py version", value = discord.__version__)
 		await ctx.channel.send(embed=embed)
 
-def setup(client):
-	client.add_cog(Discord(client))
+async def setup(client):
+	await client.add_cog(Discord(client))

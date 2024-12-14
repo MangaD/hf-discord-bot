@@ -33,16 +33,18 @@ async def on_ready():
 		#twitch.twitch() # Notifies in a channel when the Twitch stream has gone live
 	)
 
-if __name__ == "__main__":
-
-	if sys.version_info < (3,8):
-		raise Exception("Python 3.8 or above must be used.")
-
+async def run_bot():
 	for extension in startup_extensions:
 		try:
-			client.load_extension(extension)
+			await client.load_extension(extension)
 		except Exception as e:
 			exc = '{}: {}'.format(type(e).__name__, e)
 			print('Failed to load extension {}\n{}'.format(extension, exc))
+			exit()
+	await client.start(config.bot_private_token, reconnect=True)
 
-	client.run(config.bot_private_token)
+if __name__ == "__main__":
+	if sys.version_info < (3,8):
+		raise Exception("Python 3.8 or above must be used.")
+	asyncio.run(run_bot())
+

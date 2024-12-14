@@ -555,5 +555,5 @@ class Utilities(commands.Cog):
 		except pytz.exceptions.UnknownTimeZoneError:
 			return await ctx.channel.send('**{0}**: Timezone not recognized. You may find a list of timezones here: <https://gist.github.com/heyalexej/8bf688fd67d7199be4a1682b3eec7568>'.format(ctx.author.name))
 
-def setup(client):
-	client.add_cog(Utilities(client))
+async def setup(client):
+	await client.add_cog(Utilities(client))

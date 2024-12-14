@@ -12,7 +12,8 @@ from .utils.FFmpegPCMAudioGTTS import FFmpegPCMAudioGTTS
 media_only_channels = [
 	media_channel,
 	artwork_channel,
-	hf_memes_channel
+	hf_memes_channel,
+	memes_channel
 ]
 
 media_url_regexps = [
