@@ -109,7 +109,7 @@ async def on_message(message):
 	if (message.channel.id == media_channel) and (len(message.attachments) == 0):
 		try:
 			await message.delete()
-			await message.channel.send('Text messages are not allowed in this channel. If you wish to comment on a picture you may create a thread.'.format(message))
+			#await message.channel.send('Text messages are not allowed in this channel. If you wish to comment on a picture you may create a thread.'.format(message))
 		except discord.Forbidden:
 			await message.channel.send("{0}: I do not have permission to remove this nuisance. :frowning:".format(client.get_user(mangad_id).mention))
 		except:
