@@ -1,7 +1,8 @@
-git+https://github.com/Rapptz/discord.py@master # Lastest discord.py
+#git+https://github.com/Rapptz/discord.py@master # Lastest discord.py
+discord.py[voice]
 PyNaCl
 gTTS # Google's Text to Speech library
-youtube_dl
+yt-dlp
 beautifulsoup4
 pytz # Timezone
 openai # ChatGPT

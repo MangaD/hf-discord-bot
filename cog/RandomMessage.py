@@ -3,7 +3,6 @@ import random
 from random import randint
 from .common import *
 
-@asyncio.coroutine
 async def RandomMessage():
 	txt_file = open("random_phrases.txt", "r")
 	random_phrases = txt_file.readlines()

@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3.9
+#!/usr/bin/python3
 
 import sys
 import asyncio
@@ -44,7 +44,7 @@ async def run_bot():
 	await client.start(config.bot_private_token, reconnect=True)
 
 if __name__ == "__main__":
-	if sys.version_info < (3,8):
-		raise Exception("Python 3.8 or above must be used.")
+	if sys.version_info < (3,11):
+		raise Exception("Python 3.11 or above must be used.")
 	asyncio.run(run_bot())
 

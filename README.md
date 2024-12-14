@@ -15,12 +15,22 @@ A Discord bot for the Hero Fighter server. Created in July 8th, 2017. Receives o
 ```sh
 sudo apt install libav-tools
 sudo apt install libsodium-dev
+sudo apt install libffi-dev libnacl-dev python3-dev
 ```
 
 #### All platforms
 
 ```sh
+python3 -m venv hfbot
+source hfbot/bin/activate
 pip install -U -r requirements.txt
+```
+
+Run with:
+
+```sh
+source hfbot/bin/activate
+python3 HFBot.py
 ```
 
 #### Configuration

@@ -7,7 +7,6 @@ from . import common
 
 t_is_live = False
 
-@asyncio.coroutine
 async def twitch():
 	global t_is_live
 	t_channel = "hfstream"

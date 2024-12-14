@@ -44,11 +44,11 @@ import pytz
 
 ### YouTube - Start
 
-import youtube_dl
+import yt_dlp
 import urllib
 import asyncio
 
-youtube_dl.utils.bug_reports_message = lambda: ''
+#yt_dlp.utils.bug_reports_message = lambda: ''
 
 
 ytdl_format_options = {
@@ -71,7 +71,7 @@ ffmpeg_options = {
 	'options': '-vn'
 }
 
-ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 voice_channel = None
 playing = False
 
@@ -110,10 +110,10 @@ def searchYT(word):
 	# https://stackoverflow.com/questions/25500563/set-new-cookie-between-requests-with-python-requests
 	s = requests.Session()
 	r = s.get(url, stream=True)
-	s.cookies.set('CONSENT', 'YES+cb.20210530-19-p0.en+FX+267', domain=".youtube.com")
+	s.cookies.set('CONSENT', 'WP.27b9d3', domain=".youtube.com")
 	s.cookies.set('GPS', '1', domain=".youtube.com")
-	s.cookies.set('VISITOR_INFO1_LIVE', 'x2hbo4Xe7qE', domain=".youtube.com")
-	s.cookies.set('YSC', 'Fstz0Ucts3w', domain=".youtube.com")
+	s.cookies.set('VISITOR_INFO1_LIVE', 'HEwqS5-r_UM', domain=".youtube.com")
+	s.cookies.set('YSC', 'PSvAo9UQuSc', domain=".youtube.com")
 	r = s.get(url, stream=True)
 	reg = '"url":"\/watch\?v=([^"]+)"'
 	vid = None
@@ -323,10 +323,11 @@ class Utilities(commands.Cog):
 			voice_channel = ctx.author.voice.channel
 			if MyGlobals.voice is not None and MyGlobals.voice.is_connected() and MyGlobals.voice.channel != voice_channel:
 				await MyGlobals.voice.disconnect()
-
 			async with ctx.typing():
 				MyGlobals.player = await YTDLSource.from_url(searchYT(word), loop=self.client.loop)
-				if MyGlobals.voice is None or not MyGlobals.voice.is_connected():
+				if MyGlobals.voice and MyGlobals.voice.is_connected():
+					await voice.move_to(voice_channel)
+				else:
 					MyGlobals.voice = await voice_channel.connect()
 				if MyGlobals.voice.is_playing():
 					MyGlobals.voice.stop()

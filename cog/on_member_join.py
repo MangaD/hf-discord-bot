@@ -33,5 +33,5 @@ async def on_member_join(member):
 			await eng_general.send("Hello {0}! It would be awesome if you could introduce yourself in {1}. :wink:".format(member.mention, intro_channel.mention))
 
 		# Give Chinese role
-		if (re.findall(r'[\u4e00-\u9fff]+', member.name) or re.findall(r'[\u4e00-\u9fff]+', member.nickname)):
+		if (re.findall(r'[\u4e00-\u9fff]+', member.name) or re.findall(r'[\u4e00-\u9fff]+', member.nick)):
 			return await member.add_roles(discord.utils.get(member.guild.roles, name="Chinese"), reason="Member's name or nickname contains Chinese characters.")
