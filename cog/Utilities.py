@@ -549,11 +549,31 @@ class Utilities(commands.Cog):
 	@commands.command(pass_context=True, description='Get the time in a specific timezone. Usage: `.time Asia/Hong_Kong`')
 	async def time(self, ctx, *, zone : str = None):
 		"""Get the time in a specific timezone."""
+		if zone is None or zone.strip() == '':
+			return await ctx.channel.send('**{0}:** You need to specify a timezone for me to convert!'.format(ctx.author.name))
 		dateFormat = '%Y-%m-%d %H:%M:%S %Z %z'
 		try:
 			return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, datetime.now(pytz.utc if zone is None else pytz.timezone(zone)).strftime(dateFormat)))
 		except pytz.exceptions.UnknownTimeZoneError:
 			return await ctx.channel.send('**{0}**: Timezone not recognized. You may find a list of timezones here: <https://gist.github.com/heyalexej/8bf688fd67d7199be4a1682b3eec7568>'.format(ctx.author.name))
+
+	@commands.command(pass_context=True, description='Converts kg to lbs and vice-versa. Usage: `.weight 60kg` or `.weight 130lbs`')
+	async def weight(self, ctx, *, wStr : str = None):
+		if wStr is None or wStr.strip() == '':
+			return await ctx.channel.send('**{0}:** You need to specify a weight for me to convert!'.format(ctx.author.name))
+		w = re.search("(\d+\.?\d*) *[Kk][Gg]", wStr)
+		if w is not None:
+			w = float(w.group(1))
+			lbs = round(w*2.20462, 2)
+			return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, str(lbs) + "lbs"))
+		w = re.search("(\d+\.?\d*) *[Ll][Bb][Ss]", wStr)
+		if w is not None:
+			w = float(w.group(1))
+			kg = round(w/2.20462, 2)
+			return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, str(kg) + "kg"))
+		return await ctx.channel.send('**{0}**: Invalid weight format. Usage: `.weight 60kg` or `.weight 130lbs`'.format(ctx.author.name))
+
+
 
 async def setup(client):
 	await client.add_cog(Utilities(client))

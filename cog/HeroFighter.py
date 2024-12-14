@@ -127,15 +127,15 @@ class HeroFighter(commands.Cog):
 			else:
 				message2 = "**Little Fighter Empire**\n\n" + message2
 
-		message3 = searchUser("http://hf-empire.top/forum", word, max_users_to_display);
+		#message3 = searchUser("http://hf-empire.top/forum", word, max_users_to_display);
 
-		if message3 != "":
-			if message1 != "" or message2 != "":
-				message3 = "\n**Hero Fighter Empire CN**\n\n" + message3
-			else:
-				message3 = "**Hero Fighter Empire CN**\n\n" + message3
+		#if message3 != "":
+		#	if message1 != "" or message2 != "":
+		#		message3 = "\n**Hero Fighter Empire CN**\n\n" + message3
+		#	else:
+		#		message3 = "**Hero Fighter Empire CN**\n\n" + message3
 
-		message = message1 + message2 + message3
+		message = message1 + message2 #+ message3
 		if message == "":
 			return await ctx.channel.send("No users matching the criteria.")
 		else:

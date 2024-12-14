@@ -26,7 +26,7 @@ async def on_member_join(member):
 		except discord.Forbidden:
 			await eng_general.send("{0}: I do not have permission to read the message history of {1}. :frowning:".format(client.get_user(mangad_id).mention, intro_channel.mention))
 		except Exception as e:
-			await eng_general.send("Exception thrown: " + e)
+			await eng_general.send("Exception thrown: " + str(e))
 
 		if alreadyIntroduced == True:
 			await eng_general.send("Welcome back, {0}!".format(member.mention))
