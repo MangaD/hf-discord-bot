@@ -3,26 +3,12 @@ import re
 from datetime import datetime, timedelta
 
 @client.event
-async def on_member_join(member: discord.Member):
-	"""Log member join events."""
-	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
-
-	embed = discord.Embed(
-		title="Member Joined",
-		description=f"Welcome {member.mention} to the server!",
-		color=discord.Color.green()
-	)
-	embed.set_thumbnail(url=member.display_avatar.url)
-	embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
-	embed.add_field(name="Account Created", value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"), inline=True)
-	embed.set_footer(text="New Member", icon_url=ICON_URL)
-
-	await notification_channel.send(embed=embed)
-
-
-@client.event
 async def on_member_remove(member: discord.Member):
 	"""Log when a member leaves or is kicked."""
+
+	if member.guild.id != HF_GUILD_ID:
+		return
+
 	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
 
 	# Define a short time window for detecting recent kicks (e.g., 5 seconds)
@@ -65,6 +51,10 @@ async def on_member_remove(member: discord.Member):
 @client.event
 async def on_member_ban(guild: discord.Guild, user: discord.User):
 	"""Log member ban events."""
+
+	if member.guild.id != HF_GUILD_ID:
+		return
+
 	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
 
 	# Fetch the audit log entry to identify who banned the user and the reason
@@ -88,8 +78,24 @@ async def on_member_ban(guild: discord.Guild, user: discord.User):
 @client.event
 async def on_member_join(member):
 	"""Handle events when a member joins the server."""
+
 	if member.guild.id != HF_GUILD_ID:
 		return  # Exit if the member is not joining the Hero Fighter guild
+
+	"""Log member join events."""
+	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
+
+	embed = discord.Embed(
+		title="Member Joined",
+		description=f"Welcome {member.mention} to the server!",
+		color=discord.Color.green()
+	)
+	embed.set_thumbnail(url=member.display_avatar.url)
+	embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
+	embed.add_field(name="Account Created", value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"), inline=True)
+	embed.set_footer(text="New Member", icon_url=ICON_URL)
+
+	await notification_channel.send(embed=embed)
 
 	# Assign the "Bandit" role if the user is in the muted users list
 	if member.id in MyGlobals.muted_user_ids:
@@ -127,6 +133,10 @@ def contains_chinese_characters(text):
 @client.event
 async def on_member_update(before: discord.Member, after: discord.Member):
 	"""Handle updates to a member's status, roles, or nickname."""
+
+	if before.guild.id != HF_GUILD_ID:
+		return
+
 	# Fetch the notification channel
 	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
 

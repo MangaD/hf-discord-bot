@@ -7,6 +7,7 @@ import requests
 import re
 import html
 import asyncio
+import urllib.parse
 from urllib.parse import quote
 from datetime import datetime
 from urllib import parse
@@ -272,14 +273,14 @@ class Utilities(commands.Cog):
 			await self.start_tts(ctx, lang_code)
 		except Exception as e:
 			MyGlobals.tts_enabled = False
-			MyGlobals.lang = "en"
+			MyGlobals.languague = "en"
 			MyGlobals.voice_client = None
 			await ctx.channel.send(f"Error: {e}")
 
 	async def start_tts(self, ctx, lang_code):
 		"""Start TTS playback."""
 		MyGlobals.tts_enabled = True
-		MyGlobals.lang = lang_code
+		MyGlobals.language = lang_code
 		voice_channel = ctx.author.voice.channel
 		if MyGlobals.voice_client and MyGlobals.voice_client.is_connected():
 			await MyGlobals.voice_client.move_to(voice_channel)
@@ -290,7 +291,7 @@ class Utilities(commands.Cog):
 		"""Stop TTS playback."""
 		await MyGlobals.voice_client.disconnect()
 		MyGlobals.tts_enabled = False
-		MyGlobals.lang = "en"
+		MyGlobals.language = "en"
 		await ctx.channel.send(f"**{ctx.author.name}:** Stopped TTS.")
 
 	@commands.command(description='Play a YouTube video in voice channel. Usage: `.ytc <search_phrase or url>`')
@@ -472,7 +473,7 @@ class Utilities(commands.Cog):
 	@commands.command(description='Translates a phrase with optional language hints. Usage: `.tr :en :zh <phrase>`')
 	async def tr(self, ctx, *, phrase: str = None):
 		"""Translate a phrase, with optional language hints for input and output languages."""
-		
+
 		if not phrase or len(phrase.strip()) == 0:
 			await ctx.channel.send(f"**{ctx.author.name}:** Please provide a phrase to translate.")
 			return
@@ -481,7 +482,7 @@ class Utilities(commands.Cog):
 			return
 
 		in_lang, out_lang, phrase_text = self.parse_languages(phrase)
-		
+
 		if in_lang != out_lang:
 			try:
 				translated_text, detected_lang = translate(phrase_text, in_lang, out_lang)

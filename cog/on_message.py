@@ -89,7 +89,15 @@ async def on_message(message):
 
 	await tts_f(message, client)
 
-	if message.channel.id in media_only_channels:
+	if (
+		message.channel.id in media_only_channels
+		and message.type != discord.MessageType.thread_created
+		#and message.channel.type not in (
+		#	discord.ChannelType.public_thread,
+		#	discord.ChannelType.private_thread,
+		#	discord.ChannelType.news_thread,
+		#)
+	):
 		if len(message.attachments) == 0 and not any(re.search(pattern, message.content) for pattern in media_url_patterns):
 			try:
 				await message.delete()
