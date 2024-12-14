@@ -20,9 +20,9 @@ class Discord(commands.Cog):
 		return await ctx.channel.send("I've been sitting here for {} and I keep going!".format(delta))
 
 		# https://stackoverflow.com/questions/59799987/how-to-get-a-users-avatar-with-their-id-in-discord-py
-	@commands.command(description="Get the avatar image of a user. Usage: `.avatar nickname`. If the user's nickname has spaces, use quotation marks around it.")
+	@commands.command(description="Get the avatar image of a user. Usage: `.avatar nickname`")
 	async def avatar(self, ctx, *,  user: discord.Member = None):
-		"""Get the avatar image of a user. Usage: `.avatar nickname`. If the user's nickname has spaces, use quotation marks around it."""
+		"""Get the avatar image of a user. Usage: `.avatar nickname`"""
 		user = user or ctx.author
 		await ctx.send(user.display_avatar)
 
@@ -111,9 +111,9 @@ class Discord(commands.Cog):
 			return await ctx.channel.send('**{0}:** I could not find that channel.'.format(ctx.author.name))
 
 
-	@commands.command(aliases=['uinfo'], pass_context=True, description="Display info about a user. Usage: `.uinfo nickname`. If the user's nickname has spaces, use quotation marks around it.")
+	@commands.command(aliases=['uinfo'], pass_context=True, description="Display info about a user. Usage: `.uinfo nickname`")
 	async def userinfo(self, ctx, *,  user : discord.Member=None):
-		"""Display info about a user. Usage: `.uinfo nickname`. If the user's nickname has spaces, use quotation marks around it."""
+		"""Display info about a user. Usage: `.uinfo nickname`"""
 		if user is None:
 			user = ctx.author
 		embed = self.create_user_info_embed(user)
