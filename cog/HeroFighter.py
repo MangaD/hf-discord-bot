@@ -58,7 +58,7 @@ class HeroFighter(commands.Cog):
 		await ctx.channel.send('**HFX (mobile):** <https://hf-empire.com/hfx-empire/download>\n'
 		                      '**HFv0.7+ w/ RS (PC):** <https://hf-empire.com/hf-empire/downloads>\n'
 		                      '**HF Workshop:** <https://hf-empire.com/forum/showthread.php?tid=317>\n'
-                                      '**ALL MODS:** <https://cloud.hf-empire.top/s/XdVHv>');
+                                      '**ALL MODS:** <https://down.hf-empire.xyz>');
 		                      #'**ALL MODS:** <https://cloud.hf-empire.top/s/aPktW>');
 
 	@commands.command(description='Checks if the Hero Fighter v0.7 services are up and running.')
