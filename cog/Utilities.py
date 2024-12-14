@@ -3,6 +3,21 @@
 from __future__ import (unicode_literals, absolute_import,
                         print_function, division)
 
+# https://www.geeksforgeeks.org/python-import-from-parent-directory/
+import os
+import sys
+# getting the name of the directory
+# where the this file is present.
+current = os.path.dirname(os.path.realpath(__file__))
+# Getting the parent directory name
+# where the current directory is present.
+parent = os.path.dirname(current)
+# adding the parent directory to
+# the sys.path.
+sys.path.append(parent)
+import config
+
+
 from .common import *
 
 # mangle, serverinfo
@@ -353,6 +368,11 @@ class Utilities(commands.Cog):
 			return await ctx.channel.send("**{0}:** Couldn't get any definitions for \'%s\'.".format(ctx.author.name) % word)
 		meaning = meaning.get_text()
 		meaning.replace("&apos", "'")
+		try:
+			if any(x in meaning.lower() for x in config.bad_words):
+				meaning = "*- nsfw -*"
+		except NameError:
+			pass
 		meaning = "**{0}:** ".format(ctx.author.name) + meaning
 		if meaning is None:
 			return await ctx.channel.send("**{0}:** Couldn't get any definitions for \'%s\'.".format(ctx.author.name) % word)

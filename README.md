@@ -30,6 +30,7 @@ Create a `config.py` file in the root directory, with the following template:
 ```py
 bot_private_token = "" # The bot's token
 twitch_client_id = "" # The client ID of Twitch for notifying when a stream goes live
+bad_words = ["@#$%", ")/%/"] # If the Urban Dictionary answer contains one of the specified badwords, "- nsfw -" will be the only output.
 ```
 
 If using the random phrases feature, create a `random_phrases.txt` file in the root directory with a list of phrases separated by new lines.
