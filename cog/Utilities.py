@@ -242,7 +242,6 @@ def format(result, definitions, number=2):
 	return result.strip(' .,')
 
 
-
 # Discord integration
 class Utilities(commands.Cog):
 
@@ -601,6 +600,85 @@ class Utilities(commands.Cog):
 		response = completion.choices[0].text
 
 		return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, response))
+
+
+	# https://platform.openai.com/docs/guides/images/usage
+	@commands.command(pass_context=True, description='Generate an image with OpenAI given a description. Usage: `.ai_img Davis character from Little Fighter 2`')
+	async def ai_img(self, ctx, *, phrase : str = None):
+		"""Generate an image with OpenAI given a description."""
+
+		if phrase is None or phrase.strip() == '':
+			return await ctx.channel.send('**{0}:** You did not give me any input.'.format(ctx.author.name))
+
+		# https://github.com/Rapptz/discord.py/tree/master/examples/views
+		class NumberDropdownView(discord.ui.View):
+			@discord.ui.select(
+				options = [
+					discord.SelectOption(label='1', description='One'),
+					discord.SelectOption(label='2', description='Two'),
+					discord.SelectOption(label='3', description='Three'),
+					discord.SelectOption(label='4', description='Four'),
+					discord.SelectOption(label='5', description='Five'),
+				],
+				placeholder = 'Choose the number of images to generate...',
+				min_values = 1,
+				max_values = 1
+			)
+			async def select_callback(self, interaction, select):
+				self.value = select.values[0]
+				select.disabled = True
+				#await interaction.response.send_message(f'The number of images to generate is {self.value}.')
+				# https://stackoverflow.com/a/71179045/3049315
+				#await interaction.response.defer()
+				# Remove dropdown
+				await interaction.response.edit_message(view=None)
+				self.stop()
+
+		class SizeDropdownView(discord.ui.View):
+                        @discord.ui.select(
+                                options = [
+                                        discord.SelectOption(label='256x256'),
+                                        discord.SelectOption(label='512x512'),
+                                        discord.SelectOption(label='1024x1024'),
+                                ],
+                                placeholder = 'Choose the size of the images to generate...',
+                                min_values = 1,
+                                max_values = 1
+                        )
+                        async def select_callback(self, interaction, select):
+                                self.value = select.values[0]
+                                select.disabled = True
+                                await interaction.response.edit_message(view=None)
+                                self.stop()
+
+
+		view = NumberDropdownView()
+
+		msg = await ctx.send('Select number of images to generate:', view=view)
+		await view.wait()
+		await msg.delete()
+
+		n = int(view.value)
+
+		view = SizeDropdownView()
+
+		msg = await ctx.send('Select the size of the images to generate:', view=view)
+		await view.wait()
+		await msg.delete()
+
+		size = view.value
+
+		try:
+			response = openai.Image.create(
+				prompt=phrase,
+				n=n,
+				size=size
+			)
+
+			for item in response['data']:
+				await ctx.channel.send(item['url'])
+		except Exception as e:
+			return await ctx.channel.send('**{0}:** {1}'.format(ctx.author.name, str(e)))
 
 
 async def setup(client):

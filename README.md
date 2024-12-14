@@ -80,6 +80,7 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **tts:** Text to speech with optional language hint.
   - **time:** Returns the date & time for a given timezone.
   - **ai:** Interacts with OpenAI.
+  - **ai_img:** Asks OpenAI to generate images given a description.
 
 - Discord
   - **uptime:** Returns the uptime of HF Bot.
