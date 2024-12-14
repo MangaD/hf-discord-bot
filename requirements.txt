@@ -1,0 +1,5 @@
+git+https://github.com/Rapptz/discord.py@master # Lastest discord.py
+PyNaCl
+gTTS # Google's Text to Speech library
+youtube_dl
+beautifulsoup4
