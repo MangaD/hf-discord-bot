@@ -41,7 +41,7 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
 ### Features
 
 - In the Hero Fighter server, tells the user to introduce himself in the `#introductions` channel when he joins. Or welcomes him back if he already introduced himself in the past.
-- Removes text messages in the `#media` and `#artwork` channels of the Hero Fighter server.
+- Removes text messages in the `#media`, `#artwork`, and `#hf_memes` channels of the Hero Fighter server.
 - In the Hero Fighter server, assigns the 'Bandit' role to a member that had this role and tried to rejoin.
 - In the Hero Fighter server, assigns the 'Chinese' role to a member that joins and has Chinese characters in the name. 
 
