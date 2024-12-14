@@ -28,9 +28,12 @@ pip install -U -r requirements.txt
 Create a `config.py` file in the root directory, with the following template:
 
 ```py
+import openai
+
 bot_private_token = "" # The bot's token
 twitch_client_id = "" # The client ID of Twitch for notifying when a stream goes live
 bad_words = ["@#$%", ")/%/"] # If the Urban Dictionary answer contains one of the specified badwords, "- nsfw -" will be the only output.
+openai.api_key = "YOUR_API_KEY"
 ```
 
 If using the random phrases feature, create a `random_phrases.txt` file in the root directory with a list of phrases separated by new lines.
@@ -76,6 +79,7 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **tr:** Translates a phrase, with an optional language hint.
   - **tts:** Text to speech with optional language hint.
   - **time:** Returns the date & time for a given timezone.
+  - **ai:** Interacts with OpenAI.
 
 - Discord
   - **uptime:** Returns the uptime of HF Bot.

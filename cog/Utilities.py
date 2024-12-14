@@ -20,6 +20,9 @@ import config
 
 from .common import *
 
+# ChatGPT
+import openai
+
 # mangle, serverinfo
 import random
 import json
@@ -559,6 +562,7 @@ class Utilities(commands.Cog):
 
 	@commands.command(pass_context=True, description='Converts kg to lbs and vice-versa. Usage: `.weight 60kg` or `.weight 130lbs`')
 	async def weight(self, ctx, *, wStr : str = None):
+		"""Converts kg to lbs and vice-versa."""
 		if wStr is None or wStr.strip() == '':
 			return await ctx.channel.send('**{0}:** You need to specify a weight for me to convert!'.format(ctx.author.name))
 		w = re.search("(\d+\.?\d*) *[Kk][Gg]", wStr)
@@ -573,6 +577,30 @@ class Utilities(commands.Cog):
 			return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, str(kg) + "kg"))
 		return await ctx.channel.send('**{0}**: Invalid weight format. Usage: `.weight 60kg` or `.weight 130lbs`'.format(ctx.author.name))
 
+
+	@commands.command(pass_context=True, description='Interact with OpenAI. Usage: `.ai What is Hero Fighter?`')
+	async def ai(self, ctx, *, phrase : str = None):
+		"""Interact with OpenAI."""
+
+		if phrase is None or phrase.strip() == '':
+                        return await ctx.channel.send('**{0}:** You did not give me any input.'.format(ctx.author.name))
+
+		# Set up the model: https://platform.openai.com/docs/models/gpt-3
+		model_engine = "text-davinci-003"
+
+		# Generate a response
+		completion = openai.Completion.create(
+			engine=model_engine,
+			prompt=phrase,
+			max_tokens=2000,
+			n=1,
+			stop=None,
+			temperature=0.5,
+		)
+
+		response = completion.choices[0].text
+
+		return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, response))
 
 
 async def setup(client):

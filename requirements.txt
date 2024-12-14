@@ -4,3 +4,4 @@ gTTS # Google's Text to Speech library
 youtube_dl
 beautifulsoup4
 pytz # Timezone
+openai # ChatGPT

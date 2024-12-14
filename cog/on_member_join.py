@@ -19,8 +19,7 @@ async def on_member_join(member):
 
 		try:
 			# https://stackoverflow.com/a/63864014/3049315
-			intro_messages = await intro_channel.history(limit=None).flatten()
-			for msg in intro_messages:
+			async for msg in intro_channel.history(limit=None):
 				if member.id == msg.author.id:
 					alreadyIntroduced = True
 		except discord.Forbidden:

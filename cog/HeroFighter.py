@@ -10,6 +10,7 @@ def URLStatus(url, timeout_):
 	from urllib.error import URLError, HTTPError
 	from socket import timeout
 	try:
+		urllib.request.urlcleanup()
 		code = urllib.request.urlopen(url, timeout=timeout_).getcode()
 		if code == 200:
 			return True
