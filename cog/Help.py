@@ -26,6 +26,7 @@ class Help(commands.Cog): # Class shows as category in ".help" command
 			#command_name = commands[0].capitalize()
 			#cog = ctx.bot.get_cog(command_name)
 
+			cog = None
 			for name, c in ctx.bot.cogs.items():
 				if name.lower() == commands[0].lower():
 					cog = c

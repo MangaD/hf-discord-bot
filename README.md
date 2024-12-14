@@ -75,6 +75,7 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **w:** Look up something on Wikipedia.
   - **tr:** Translates a phrase, with an optional language hint.
   - **tts:** Text to speech with optional language hint.
+  - **time:** Returns the date & time for a given timezone.
 
 - Discord
   - **uptime:** Returns the uptime of HF Bot.

@@ -35,6 +35,10 @@ from bs4 import BeautifulSoup
 import re
 import html
 
+# Time and timezone
+from datetime import datetime
+import pytz
+
 ### YouTube - Start
 
 import youtube_dl
@@ -541,6 +545,15 @@ class Utilities(commands.Cog):
 				phrase = backup
 				break
 		return await ctx.channel.send('**{0}:** '.format(ctx.author.name) + phrase[0])
+
+	@commands.command(pass_context=True, description='Get the time in a specific timezone. Usage: `.time Asia/Hong_Kong`')
+	async def time(self, ctx, *, zone : str = None):
+		"""Get the time in a specific timezone."""
+		dateFormat = '%Y-%m-%d %H:%M:%S %Z %z'
+		try:
+			return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, datetime.now(pytz.utc if zone is None else pytz.timezone(zone)).strftime(dateFormat)))
+		except pytz.exceptions.UnknownTimeZoneError:
+			return await ctx.channel.send('**{0}**: Timezone not recognized. You may find a list of timezones here: <https://gist.github.com/heyalexej/8bf688fd67d7199be4a1682b3eec7568>'.format(ctx.author.name))
 
 def setup(client):
 	client.add_cog(Utilities(client))
