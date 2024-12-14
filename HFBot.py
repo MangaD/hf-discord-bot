@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/local/bin/python3.9
 
 import sys
 import asyncio
@@ -9,6 +9,7 @@ from cog.common import *
 from cog.on_message import *
 from cog.on_command import *
 from cog.on_member_join import *
+from cog.on_member_update import *
 from cog import RandomMessage as rm
 from cog import twitch
 

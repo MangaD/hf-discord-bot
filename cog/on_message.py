@@ -106,7 +106,7 @@ async def on_message(message):
 	await tts_f(message, client)
 
 	# Remove text messages in #media
-	if (message.channel.id == media_channel) and (len(message.attachments) == 0):
+	if (message.channel.id == media_channel or message.channel.id == artwork_channel) and (len(message.attachments) == 0):
 		try:
 			await message.delete()
 			#await message.channel.send('Text messages are not allowed in this channel. If you wish to comment on a picture you may create a thread.'.format(message))
