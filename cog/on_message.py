@@ -7,6 +7,7 @@ from gtts import gTTS
 from io import BytesIO
 import io
 import re
+import asyncio
 from .utils.FFmpegPCMAudioGTTS import FFmpegPCMAudioGTTS
 
 media_only_channels = [
@@ -87,10 +88,12 @@ async def on_message(message):
 	# @HF Bot
 	if (message.content.lower() == "<@!{}>".format(client.user.id)):
 		await message.channel.send('What?!')
+		return
 	# HF Bot!
 	elif (hf_bot_pattern.match(message.content) is not None):
 		msg = '{0.author.mention}!'.format(message)
 		await message.channel.send(msg)
+		return
 	# Hello/Hi HF Bot
 	elif (message.content.lower().startswith("hello {}".format(client.user.name).lower())
 		or message.content.lower().startswith("hello <@!{}>".format(client.user.id))
@@ -99,14 +102,18 @@ async def on_message(message):
 		):
 		msg = 'Hello {0.author.mention}'.format(message)
 		await message.channel.send(msg)
+		return
 	# Who's daddy?
 	elif (message.content.lower() == "who's daddy?"):
 		await message.channel.send(client.get_user(mangad_id).mention)
+		return
 	# Give that man a cookie
 	elif ("give that man a cookie" in message.content.lower()):
 		await message.channel.send("http://orteil.dashnet.org/cookieclicker/")
+		return
 	elif ("bow to me" in message.content.lower() and message.author.mention == client.get_user(mangad_id).mention):
 		await message.channel.send('_bows to {0}_'.format(message.author.mention))
+		return
 
 	# No swearing
 	#if any(word in message.content.lower() for word in p.swearing):
@@ -127,5 +134,17 @@ async def on_message(message):
 			await message.channel.send("{0}: I do not have permission to remove this nuisance. :frowning:".format(client.get_user(mangad_id).mention))
 		except:
 			pass
+		return
+
+	if (message.channel.id == introductions_channel and await hasAlreadyIntroduced(message.author)):
+		try:
+			await message.delete()
+			response = await message.channel.send(f"{message.author.mention}: You have already introduced yourself. You may edit your introduction, but not send a new message. You may create a thread under someone's introduction message if you wish to reply to it.")
+			asyncio.create_task(delete_after_delay(response, delay=15))
+		except discord.Forbidden:
+			await message.channel.send("{0}: I do not have permission to remove this nuisance. :frowning:".format(client.get_user(mangad_id).mention))
+		except:
+			pass
+		return
 
 	await client.process_commands(message)
