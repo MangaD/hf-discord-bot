@@ -577,10 +577,10 @@ class Utilities(commands.Cog):
 		return await ctx.channel.send('**{0}**: Invalid weight format. Usage: `.weight 60kg` or `.weight 130lbs`'.format(ctx.author.name))
 
 
-	@commands.command(pass_context=True, description='Interact with OpenAI. Usage: `.ai What is Hero Fighter?`')
+	@commands.command(pass_context=True, description='Interact with OpenAI. Usage: `.ai What is Hero Fighter?`', enabled=False, hidden=True)
 	async def ai(self, ctx, *, phrase : str = None):
 		"""Interact with OpenAI."""
-
+		print("test")
 		if phrase is None or phrase.strip() == '':
                         return await ctx.channel.send('**{0}:** You did not give me any input.'.format(ctx.author.name))
 
@@ -603,7 +603,7 @@ class Utilities(commands.Cog):
 
 
 	# https://platform.openai.com/docs/guides/images/usage
-	@commands.command(pass_context=True, description='Generate an image with OpenAI given a description. Usage: `.ai_img Davis character from Little Fighter 2`')
+	@commands.command(pass_context=True, description='Generate an image with OpenAI given a description. Usage: `.ai_img Davis character from Little Fighter 2`', enabled=False, hidden=True)
 	async def ai_img(self, ctx, *, phrase : str = None):
 		"""Generate an image with OpenAI given a description."""
 

@@ -37,7 +37,8 @@ class Help(commands.Cog): # Class shows as category in ".help" command
 			embed.title = cog.qualified_name
 			embed.description = '\u200b'
 			for c in cog.get_commands():
-				embed.add_field(name=c.name, value=c.description, inline=False)
+				if c.hidden is False:
+					embed.add_field(name=c.name, value=c.description, inline=False)
 
 
 		embed.set_footer(text=bot_url, icon_url=icon_url)
