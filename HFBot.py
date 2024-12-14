@@ -9,9 +9,7 @@ import config
 from cog.common import *
 from cog.on_message import *
 from cog.on_command import *
-from cog.on_member_join import *
-from cog.on_member_update import *
-from cog.on_member_remove import *
+from cog.member_events import *
 from cog.guild_events import *
 from cog import RandomMessage as rm
 from cog import twitch
