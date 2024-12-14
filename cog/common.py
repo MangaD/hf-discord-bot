@@ -16,11 +16,11 @@ ICON_URL = "https://hf-empire.com/favicon/favicon-16x16.png"
 
 # Discord intents
 intents = discord.Intents(
-	messages=True, 
-	guilds=True, 
-	members=True, 
-	presences=True, 
-	voice_states=True, 
+	messages=True,
+	guilds=True,
+	members=True,
+	presences=True,
+	voice_states=True,
 	message_content=True
 )
 member_cache_flags = discord.MemberCacheFlags.all()
@@ -94,7 +94,7 @@ async def has_already_introduced(member: discord.Member, message_ignore: discord
 		bool: True if the member has already introduced, False otherwise.
 	"""
 	eng_general = client.get_channel(ENGLISH_GENERAL_ID)
-	intro_channel = client.get_channel(INTRODUCTIONS_CHANNEL)
+	intro_channel = client.get_channel(INTRODUCTIONS_CHANNEL_ID)
 
 	try:
 		async for msg in intro_channel.history(limit=None):
@@ -104,5 +104,5 @@ async def has_already_introduced(member: discord.Member, message_ignore: discord
 		await eng_general.send(f"{client.get_user(MANGAD_ID).mention}: Permission to read {intro_channel.mention} message history is missing. :frowning:")
 	except Exception as e:
 		await eng_general.send(f"An exception occurred: {e}")
-	
+
 	return False

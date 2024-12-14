@@ -101,7 +101,7 @@ async def on_message(message):
 				await message.channel.send(f"{client.get_user(MANGAD_ID).mention}: I lack permission to delete messages in this channel.")
 
 	if message.channel.id == INTRODUCTIONS_CHANNEL_ID:
-		if await hasAlreadyIntroduced(message.author, message):
+		if await has_already_introduced(message.author, message):
 			try:
 				await message.delete()
 				response = await message.channel.send(
