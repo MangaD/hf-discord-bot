@@ -2,7 +2,7 @@
 
 [![Discord server invite](https://discord.com/api/guilds/234364433344888832/widget.png)](https://discord.gg/3PUwmY8) [![License](https://img.shields.io/badge/license-MIT-red?style=flat)](LICENSE) ![Python 3.8+](https://img.shields.io/badge/python-v3.8+-blue?style=flat)
 
-![Bot Avatar](resources/bot_avatar.png)
+![Bot Avatar](resources/avatar/bot_avatar_v2.png)
 
 ## Introduction
 
