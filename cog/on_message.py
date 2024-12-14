@@ -136,15 +136,19 @@ async def on_message(message):
 			pass
 		return
 
-	if (message.channel.id == introductions_channel and await hasAlreadyIntroduced(message.author)):
-		try:
-			await message.delete()
-			response = await message.channel.send(f"{message.author.mention}: You have already introduced yourself. You may edit your introduction, but not send a new message. You may create a thread under someone's introduction message if you wish to reply to it.")
-			asyncio.create_task(delete_after_delay(response, delay=15))
-		except discord.Forbidden:
-			await message.channel.send("{0}: I do not have permission to remove this nuisance. :frowning:".format(client.get_user(mangad_id).mention))
-		except:
-			pass
+
+	if (message.channel.id == introductions_channel):
+		hasIntroduced = await hasAlreadyIntroduced(message.author, message)
+
+		if hasIntroduced:
+			try:
+				await message.delete()
+				response = await message.channel.send(f"{message.author.mention}: You have already introduced yourself. You may edit your introduction, but not send a new message. You may create a thread under someone's introduction message if you wish to reply to it.")
+				asyncio.create_task(delete_after_delay(response, delay=15))
+			except discord.Forbidden:
+				await message.channel.send("{0}: I do not have permission to remove this nuisance. :frowning:".format(client.get_user(mangad_id).mention))
+			except:
+				pass
 		return
 
 	await client.process_commands(message)

@@ -66,19 +66,19 @@ async def delete_after_delay(message, delay):
 	except discord.HTTPException as e:
 		print(f"Failed to delete message: {e}")
 
-async def hasAlreadyIntroduced(member):
-	alreadyIntroduced = False
+async def hasAlreadyIntroduced(member, message_ignore=None):
+
 	eng_general = client.get_channel(english_general_id)
 	intro_channel = client.get_channel(introductions_channel)
 
 	try:
 		# https://stackoverflow.com/a/63864014/3049315
 		async for msg in intro_channel.history(limit=None):
-			if member.id == msg.author.id:
-				alreadyIntroduced = True
+			if msg.author.id == member.id and (message_ignore is None or msg != message_ignore):
+				return True
 	except discord.Forbidden:
 		await eng_general.send("{0}: I do not have permission to read the message history of {1}. :frowning:".format(client.get_user(mangad_id).mention, intro_channel.mention))
 	except Exception as e:
-		await eng_general.send("Exception thrown: " + str(e))
+		await eng_general.send(f"Exception thrown: {e}")
 
-	return alreadyIntroduced
+	return False
