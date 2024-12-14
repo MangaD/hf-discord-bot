@@ -1,5 +1,6 @@
 from .common import *
 import re
+from datetime import datetime, timedelta
 
 @client.event
 async def on_member_join(member: discord.Member):
@@ -24,9 +25,15 @@ async def on_member_remove(member: discord.Member):
 	"""Log when a member leaves or is kicked."""
 	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
 
+	# Define a short time window for detecting recent kicks (e.g., 5 seconds)
+	time_threshold = timedelta(seconds=5)
+
+	# Get the current time in UTC
+	now = datetime.utcnow()
+
 	# Check if the member was kicked by fetching audit logs
 	async for entry in member.guild.audit_logs(action=discord.AuditLogAction.kick, limit=1):
-		if entry.target.id == member.id:
+		if entry.target.id == member.id and (now - entry.created_at) <= time_threshold:
 			embed = discord.Embed(
 				title="Member Kicked",
 				description=f"{member.mention} was kicked from the server.",
