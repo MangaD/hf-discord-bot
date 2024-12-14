@@ -90,8 +90,8 @@ async def on_member_join(member):
 		return
 
 	# Greet the member in the English General channel
-	eng_general = client.get_channel(english_general_id)
-	intro_channel = client.get_channel(introductions_channel)
+	eng_general = client.get_channel(ENGLISH_GENERAL_ID)
+	intro_channel = client.get_channel(INTRODUCTIONS_CHANNEL_ID)
 	if await has_already_introduced(member):
 		await eng_general.send(f"Welcome back, {member.mention}!")
 	else:
