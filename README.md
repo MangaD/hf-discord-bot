@@ -104,3 +104,4 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
 - Create reminder command (look into RoboDanny)
   - use sqlite
 - Store members (roles, notes, etc) and chat history in database. When a member rejoins, the roles are re-attributed.
+- Look for a word in the Oxford and Cambridge dictionaries.
