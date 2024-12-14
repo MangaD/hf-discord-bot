@@ -1,6 +1,6 @@
 # Hero Fighter &ndash; Discord Bot
 
-[![Discord server invite](https://discord.com/api/guilds/234364433344888832/widget.png)](https://discord.gg/3PUwmY8) [![License](https://img.shields.io/badge/license-MIT-red?style=flat)](LICENSE) ![Python 3.8+](https://img.shields.io/badge/python-v3.8+-blue?style=flat)
+[![Discord server invite](https://discord.com/api/guilds/234364433344888832/widget.png)](https://discord.gg/3PUwmY8) [![License](https://img.shields.io/badge/license-MIT-red?style=flat)](LICENSE) ![Python 3.11+](https://img.shields.io/badge/python-v3.11+-blue?style=flat)
 
 ![Bot Avatar](resources/avatar/bot_avatar_v2.png)
 
@@ -50,7 +50,7 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
 
 ### Requirements
 
-- Python 3.8+
+- Python 3.11+
 
 ### Features
 
@@ -112,7 +112,6 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
 - Look into RoboDanny (https://github.com/Rapptz/RoboDanny)
   - Try out its commands in the discord.py server
 - Refactor code
-  - use f-strings
   - use decorators
   - create HFGuild class with the info of this guild in it
   - create Bot class with bot info in it

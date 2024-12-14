@@ -1,62 +1,72 @@
+import re
 from .common import *
 from .checks import *
+from discord.ext import commands
+from discord import Forbidden
 
-import re
-
-class Moderation(commands.Cog): # Class shows as category in ".help" command
-
-	"""For moderators only."""
+class Moderation(commands.Cog):
+	"""Commands restricted to moderators."""
 
 	def __init__(self, client):
 		self.client = client
 
-	@commands.command(pass_context=True,
-		description="""Gives the \'Bandit\' role to a user, even if he rejoins the server. Receives the user\'s name (or tag) and an optional reason.\n
-			E.g. `.bandit UserX You are breaking the rules.`\n
-			To undo, run the command again. If the user's nickname has spaces, use quotation marks around it.
-			""") # description appears when using ".help bandit"
+	@commands.command(
+		description=(
+			"Gives or removes the 'Bandit' role from a user, preventing or allowing rejoining privileges. "
+			"Accepts the user's name (or tag) and an optional reason.\n"
+			"Usage: `.bandit UserX [optional reason]`\n"
+			"Example: `.bandit UserX You are breaking the rules.`\n"
+			"If the user's nickname contains spaces, enclose it in quotation marks."
+		)
+	)
 	@hf_guild_only()
-	async def bandit(self, ctx, user : discord.Member=None, *, reason : str = None):
+	async def bandit(self, ctx, user: discord.Member = None, *, reason: str = "No reason given."):
+		"""Assign or remove the 'Bandit' role to/from a user, even on rejoining."""
 
-		"""Gives the \'Bandit\' role to a user, even if he rejoins the server. Receives the user's name (or tag) and an optional reason.\n
-		E.g. `.bandit UserX You are breaking the rules.`\n
-		To undo, run the command again. If the user's nickname has spaces, use quotation marks around it.
-		""" # Appears in ".help"
+		# Check for moderator permissions
+		if not ctx.author.guild_permissions.manage_roles:
+			await ctx.channel.send(f"**{ctx.author.name}:** You lack permission to use this command. :angry:")
+			return
 
-		can_manage_roles = ctx.author.guild_permissions.manage_roles
-		if can_manage_roles == False:
-			return await ctx.channel.send("**{0}:** You do not have permission to use this command. :angry:".format(ctx.author.name))
-
+		# Ensure user parameter is provided
 		if user is None:
-			return await ctx.channel.send("**{0}:** You did not give me a user to punish.".format(ctx.author.name))
-
-		if reason is None:
-			reason = "No reason given."
+			await ctx.channel.send(f"**{ctx.author.name}:** Please specify a user to assign the 'Bandit' role to.")
+			return
 
 		bandit_role = discord.utils.get(user.guild.roles, name="Bandit")
 
 		try:
-			if bandit_role in user.roles:
-				await user.remove_roles(bandit_role, reason=reason)
-			else:
-				await user.add_roles(bandit_role, reason=reason)
-		except Forbidden:
-			return await eng_general.send("{0}: I do not have permission to manage roles. :frowning:".format(client.get_user(mangad_id).mention))
-		except Exception as e:
-			return await eng_general.send("Exception thrown: " + e)
+			# Toggle the 'Bandit' role
+			action = "remove" if bandit_role in user.roles else "add"
+			await self.toggle_bandit_role(user, bandit_role, reason, action)
 
-		if user.id in MyGlobals.muted_users_ids:
-			MyGlobals.muted_users_ids.remove(user.id)
+			# Update muted users list
+			if user.id in MyGlobals.muted_user_ids:
+				MyGlobals.muted_user_ids.remove(user.id)
+			else:
+				MyGlobals.muted_user_ids.append(user.id)
+
+		except Forbidden:
+			await ctx.channel.send(f"{ctx.author.mention}: I lack permission to manage roles.")
+		except Exception as e:
+			await ctx.channel.send(f"An error occurred: {e}")
+
+	async def toggle_bandit_role(self, user: discord.Member, bandit_role: discord.Role, reason: str, action: str):
+		"""Add or remove the 'Bandit' role from a user based on the action specified."""
+		if action == "remove":
+			await user.remove_roles(bandit_role, reason=reason)
 		else:
-			MyGlobals.muted_users_ids.append(user.id)
+			await user.add_roles(bandit_role, reason=reason)
 
 	@bandit.error
 	async def bandit_error(self, ctx, error):
-		if isinstance(error, commands.errors.MemberNotFound):
-			return await ctx.channel.send('**{0}:** I could not find that user. :thinking:'.format(ctx.author.name))
+		"""Error handler for the 'bandit' command."""
+		if isinstance(error, commands.MemberNotFound):
+			await ctx.channel.send(f"**{ctx.author.name}:** User not found. :thinking:")
 		elif isinstance(error, NoHFGuild):
-			return await ctx.channel.send(error)
-
+			await ctx.channel.send(error)
+		else:
+			await ctx.channel.send(f"An unexpected error occurred: {error}")
 
 async def setup(client):
-        await client.add_cog(Moderation(client))
+	await client.add_cog(Moderation(client))

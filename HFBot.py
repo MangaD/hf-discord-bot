@@ -2,6 +2,7 @@
 
 import sys
 import asyncio
+import discord
 
 # Cogs
 import config
@@ -13,38 +14,49 @@ from cog.on_member_update import *
 from cog import RandomMessage as rm
 from cog import twitch
 
-# this specifies what extensions to load when the bot starts up
-startup_extensions = ["cog.Help",
-		"cog.Games",
-		"cog.Utilities",
-		"cog.Discord",
-		"cog.HeroFighter",
-		"cog.Moderation"]
+# Extensions to load on startup
+STARTUP_EXTENSIONS = (
+	"cog.Help",
+	"cog.Games",
+	"cog.Utilities",
+	"cog.Discord",
+	"cog.HeroFighter",
+	"cog.Moderation"
+)
 
 @client.event
 async def on_ready():
 	print("Bot Online!")
-	print("Name: {}".format(client.user.name))
-	print("ID: {}".format(client.user.id))
-	print("Discord.py version: {}".format(discord.__version__))
+	print(f"Name: {client.user.name}")
+	print(f"ID: {client.user.id}")
+	print(f"Discord.py version: {discord.__version__}")
+
+	# Use asyncio.gather() to manage multiple background tasks if needed
 	await asyncio.gather(
-		client.change_presence(activity=discord.Game(name='Hero Fighter')) #,
-		#rm.RandomMessage(), # Sends random messages to a channel once in a while
-		#twitch.twitch() # Notifies in a channel when the Twitch stream has gone live
+		client.change_presence(activity=discord.Game(name='Hero Fighter')),
+		# Uncomment if needed:
+		# rm.RandomMessage(),  # Sends random messages to a channel periodically
+		# twitch.twitch()	  # Notifies a channel when a Twitch stream goes live
 	)
 
-async def run_bot():
-	for extension in startup_extensions:
+async def load_extensions():
+	for extension in STARTUP_EXTENSIONS:
 		try:
 			await client.load_extension(extension)
+			print(f"Loaded extension: {extension}")
 		except Exception as e:
-			exc = '{}: {}'.format(type(e).__name__, e)
-			print('Failed to load extension {}\n{}'.format(extension, exc))
-			exit()
+			print(f"Failed to load extension {extension}: {type(e).__name__}: {e}")
+
+async def run_bot():
+	await load_extensions()
 	await client.start(config.bot_private_token, reconnect=True)
 
 if __name__ == "__main__":
-	if sys.version_info < (3,11):
-		raise Exception("Python 3.11 or above must be used.")
-	asyncio.run(run_bot())
-
+	if sys.version_info < (3, 11):
+		raise Exception("Python 3.11 or above is required.")
+	
+	try:
+		asyncio.run(run_bot())
+	except Exception as e:
+		print(f"Error running bot: {type(e).__name__}: {e}")
+		sys.exit(1)

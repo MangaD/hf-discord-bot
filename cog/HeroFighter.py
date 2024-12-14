@@ -1,147 +1,129 @@
-from .common import *
-
-# Room List
-from random import randint
+import re
 import urllib.request
 from xml.dom import minidom
+from random import randint
 import requests
+from discord.ext import commands
+from .common import *
 
-def URLStatus(url, timeout_):
+def url_status(url: str, timeout: int = 2) -> bool:
+	"""Check if a given URL is reachable within a specified timeout."""
 	from urllib.error import URLError, HTTPError
-	from socket import timeout
+	from socket import timeout as SocketTimeout
+
 	try:
 		urllib.request.urlcleanup()
-		code = urllib.request.urlopen(url, timeout=timeout_).getcode()
-		if code == 200:
-			return True
-		else:
-			return False
-	except (HTTPError, URLError) as error:
-		return False
-	except timeout:
+		code = urllib.request.urlopen(url, timeout=timeout).getcode()
+		return code == 200
+	except (HTTPError, URLError, SocketTimeout):
 		return False
 
-def searchUser(forum : str, word : str, max_users_to_display : int):
-	query = urllib.parse.quote(word)
-	url = forum + "/memberlist.php?sort=postnum&username_match=contains&username=" + query
-	r = requests.get(url, stream=True)
-	reg = '(?:(?:<td class="trow[12]">)|(?:<div class="plink text-center col-sm-12">)|(?:<h4 class="memberlistname">))<a href="(.*?)">(<span.*?>)?(.*)?</a>'
-	i = 0
+def search_user(forum_url: str, keyword: str, max_display: int) -> str:
+	"""Search for users in a specified forum and return formatted results."""
+	query = urllib.parse.quote(keyword)
+	url = f"{forum_url}/memberlist.php?sort=postnum&username_match=contains&username={query}"
+	response = requests.get(url, stream=True)
+	
+	pattern = re.compile(r'<a href="(.*?)">(?:<span.*?>)?(.*?)</a>')
+	users = pattern.findall(response.text)
 	message = ""
-	for (url2, garbage, user) in re.findall(reg, r.text):
-		i+=1
-		user = user.replace("<strong>", "")
-		user = user.replace("</strong>", "")
-		user = user.replace("</span>", "")
-		url2 = url2.replace("&amp;", "&")
-		if i <= max_users_to_display:
-			message += user + " - <" + url2 + ">\n"
-		else:
-			message += "\nFor more users go to: <" + url + ">\n"
+	
+	for i, (user_url, username) in enumerate(users):
+		if i >= max_display:
+			message += f"\nFor more users, visit: <{url}>\n"
 			break
+		username = re.sub(r"</?strong>|</?span>", "", username)
+		user_url = user_url.replace("&amp;", "&")
+		message += f"{username} - <{user_url}>\n"
+	
 	return message
 
-def chunks(s, n):
-	"""Produce `n`-character chunks from `s`."""
+def chunks(s: str, n: int):
+	"""Generate `n`-character chunks from a given string `s`."""
 	for start in range(0, len(s), n):
 		yield s[start:start+n]
 
 class HeroFighter(commands.Cog):
-	"""Everything concerning Hero Fighter goes here."""
+	"""Commands and utilities for the Hero Fighter community."""
 
 	def __init__(self, client):
 		self.client = client
 
-	@commands.command(pass_context=False, description='Provides the link for downloading HF and RS.')
+	@commands.command(description="Provides download links for Hero Fighter and related resources.")
 	async def download(self, ctx):
-		"""Provides the link for downloading HF and RS."""
-		await ctx.channel.send('**HFX (mobile):** <https://hf-empire.com/hfx-empire/download>\n'
-		                      '**HFv0.7+ w/ RS (PC):** <https://hf-empire.com/hf-empire/downloads>\n'
-		                      '**HF Workshop:** <https://hf-empire.com/forum/showthread.php?tid=317>\n'
-                                      '**ALL MODS:** <https://down.hf-empire.xyz>');
-		                      #'**ALL MODS:** <https://cloud.hf-empire.top/s/aPktW>');
-
-	@commands.command(description='Checks if the Hero Fighter v0.7 services are up and running.')
-	async def status(self, ctx):
-		"""Checks if the Hero Fighter v0.7 services are up and running."""
-		message = ''
-		if URLStatus("http://herofighter.com", 2):
-			message += 'Hero Fighter website is **up**!\n'
-		else:
-			message += 'Hero Fighter website is **down**!\n'
-		if URLStatus("https://hf-empire.com", 2):
-			message += 'Hero Fighter Empire website is **up**!\n'
-		else:
-			message += 'Hero Fighter Empire website is **down**!\n'
-		if URLStatus("http://s.herofighter.com", 2):
-			message += 'Hero Fighter v0.7 services are **up**!'
-		else:
-			message += 'Hero Fighter v0.7 services are **down**!'
-
+		"""Send download links for Hero Fighter and resources."""
+		message = (
+			"**HFX (mobile):** <https://hf-empire.com/hfx-empire/download>\n"
+			"**HFv0.7+ w/ RS (PC):** <https://hf-empire.com/hf-empire/downloads>\n"
+			"**HF Workshop:** <https://hf-empire.com/forum/showthread.php?tid=317>\n"
+			"**ALL MODS:** <https://down.hf-empire.xyz>"
+		)
 		await ctx.channel.send(message)
 
+	@commands.command(description="Check if the Hero Fighter v0.7 services are operational.")
+	async def status(self, ctx):
+		"""Check the operational status of Hero Fighter websites and services."""
+		message = (
+			f"Hero Fighter website is **{'up' if url_status('http://herofighter.com') else 'down'}**!\n"
+			f"Hero Fighter Empire website is **{'up' if url_status('https://hf-empire.com') else 'down'}**!\n"
+			f"Hero Fighter v0.7 services are **{'up' if url_status('http://s.herofighter.com') else 'down'}**!"
+		)
+		await ctx.channel.send(message)
 
-
-	@commands.command(description='Prints the HF Room List.')
+	@commands.command(description="Display the Hero Fighter room list.")
 	async def rl(self, ctx):
-		"""Prints the HF Room List."""
+		"""Fetch and display the Hero Fighter room list."""
 		try:
-		        f = urllib.request.urlopen('http://herofighter.com/hf/rlg.php?ver=700&cc=de&s=' + str(randint(0, 99999)))
-		        data = f.read();
-		        f.close();
+			url = f"http://herofighter.com/hf/rlg.php?ver=700&cc=de&s={randint(0, 99999)}"
+			data = urllib.request.urlopen(url).read()
 		except IOError:
-		        await ctx.channel.send('Failed to connect to the server.');
-		        return;
-		data = minidom.parseString(data);
-		rooms = data.getElementsByTagName('room');
-		if rooms.length <= 0:
-		        await ctx.channel.send('No rooms available.');
-		        return;
-		i = 1; room_s = "";
-		for room in rooms:
-		        room_s += ( str(i) + '. **' + room.getElementsByTagName("rn")[0].firstChild.nodeValue + '**'
-					'\t' + room.getElementsByTagName("dc")[0].firstChild.nodeValue +
-		                        '\t' + room.getElementsByTagName("cc")[0].firstChild.nodeValue +
-		                        '\t' + room.getElementsByTagName("n")[0].firstChild.nodeValue +
-		                        '/' + room.getElementsByTagName("nl")[0].firstChild.nodeValue );
-		        ppl = room.getElementsByTagName("ppl");
-		        if ppl[0].firstChild != None:
-		                room_s += '\t' + ppl[0].firstChild.nodeValue;
-		        room_s += '\n'
-		        i+=1;
-		for chunk in chunks( encode_string_with_links(room_s), 2000):
-			await ctx.channel.send( chunk );
+			await ctx.channel.send("Failed to connect to the Hero Fighter server.")
+			return
+		
+		room_message = self.parse_room_list(data)
+		for chunk in chunks(encode_string_with_links(room_message), 2000):
+			await ctx.channel.send(chunk)
 
-	@commands.command(pass_context=True, description='Searches for a user in HFE and LFE.')
-	async def search(self, ctx, *, word : str = None):
-		"""Searches for a user in HFE and LFE."""
+	def parse_room_list(self, data: bytes) -> str:
+		"""Parse room list XML data and return it as a formatted string."""
+		room_list = minidom.parseString(data).getElementsByTagName('room')
+		if not room_list:
+			return "No rooms available."
+
+		room_message = ""
+		for i, room in enumerate(room_list, start=1):
+			room_name = room.getElementsByTagName("rn")[0].firstChild.nodeValue
+			disconnects = room.getElementsByTagName("dc")[0].firstChild.nodeValue
+			connections = room.getElementsByTagName("cc")[0].firstChild.nodeValue
+			current = room.getElementsByTagName("n")[0].firstChild.nodeValue
+			limit = room.getElementsByTagName("nl")[0].firstChild.nodeValue
+			players = room.getElementsByTagName("ppl")[0].firstChild.nodeValue if room.getElementsByTagName("ppl")[0].firstChild else ""
+
+			room_message += f"{i}. **{room_name}**\t{disconnects}\t{connections}\t{current}/{limit}\t{players}\n"
+		
+		return room_message
+
+	@commands.command(description="Search for a user in the Hero Fighter and Little Fighter forums.")
+	async def search(self, ctx, *, word: str = None):
+		"""Search for a user in Hero Fighter and Little Fighter forums."""
+		if not word:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please specify a user to search for.")
+			return
+
 		max_users_to_display = 5
-		if word is None:
-			return await ctx.channel.send('**{0}:** You must tell me what to look up!'.format(ctx.message.author.name))
-		message1 = searchUser("https://hf-empire.com/forum", word, max_users_to_display);
-		if message1 != "":
-			message1 = "**Hero Fighter Empire**\n\n" + message1
+		message1 = search_user("https://hf-empire.com/forum", word, max_users_to_display)
+		message2 = search_user("https://lf-empire.de/forum", word, max_users_to_display)
 
-		message2 = searchUser("https://lf-empire.de/forum", word, max_users_to_display);
-		if message2 != "":
-			if message1 != "":
-				message2 = "\n**Little Fighter Empire**\n\n" + message2
-			else:
-				message2 = "**Little Fighter Empire**\n\n" + message2
+		final_message = ""
+		if message1:
+			final_message += f"**Hero Fighter Empire**\n\n{message1}"
+		if message2:
+			final_message += f"\n**Little Fighter Empire**\n\n{message2}" if message1 else f"**Little Fighter Empire**\n\n{message2}"
 
-		#message3 = searchUser("http://hf-empire.top/forum", word, max_users_to_display);
-
-		#if message3 != "":
-		#	if message1 != "" or message2 != "":
-		#		message3 = "\n**Hero Fighter Empire CN**\n\n" + message3
-		#	else:
-		#		message3 = "**Hero Fighter Empire CN**\n\n" + message3
-
-		message = message1 + message2 #+ message3
-		if message == "":
-			return await ctx.channel.send("No users matching the criteria.")
+		if final_message:
+			await ctx.channel.send(final_message)
 		else:
-			return await ctx.channel.send(message)
+			await ctx.channel.send("No users matching the criteria.")
 
 async def setup(client):
-    await client.add_cog(HeroFighter(client))
+	await client.add_cog(HeroFighter(client))

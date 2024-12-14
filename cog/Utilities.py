@@ -1,71 +1,41 @@
-# Translate
-# coding=utf-8
-from __future__ import (unicode_literals, absolute_import,
-                        print_function, division)
-
-# https://www.geeksforgeeks.org/python-import-from-parent-directory/
+# Import necessary modules
 import os
 import sys
-# getting the name of the directory
-# where the this file is present.
-current = os.path.dirname(os.path.realpath(__file__))
-# Getting the parent directory name
-# where the current directory is present.
-parent = os.path.dirname(current)
-# adding the parent directory to
-# the sys.path.
-sys.path.append(parent)
-import config
-
-
-from .common import *
-
-# ChatGPT
-import openai
-
-# mangle, serverinfo
 import random
 import json
-import sys
 import requests
-from requests import get
-from urllib import parse
-
-# UrbanDictionary
-from bs4 import BeautifulSoup
-
-# Wikitionary
 import re
 import html
-
-# Time and timezone
-from datetime import datetime
-import pytz
-
-### YouTube - Start
-
-import yt_dlp
-import urllib
 import asyncio
+from urllib.parse import quote
+from datetime import datetime
+from urllib import parse
+from bs4 import BeautifulSoup
+import openai
+import pytz
+import yt_dlp
+import discord
+from .common import *
+import config
 
-#yt_dlp.utils.bug_reports_message = lambda: ''
+# Add the parent directory to sys.path for module access
+sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
-
+# YouTube Downloader Configuration
 ytdl_format_options = {
-	'format': 'bestaudio', #'bestaudio/best',
+	'format': 'bestaudio',
 	'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
 	'restrictfilenames': True,
 	'noplaylist': True,
 	'nocheckcertificate': True,
 	'ignoreerrors': False,
-	'logtostderr': False,
 	'quiet': True,
 	'no_warnings': True,
 	'default_search': 'auto',
-	'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
+	'source_address': '0.0.0.0'  # Bind to IPv4 to avoid IPv6 issues
 }
 
-# https://stackoverflow.com/questions/61959495/when-playing-audio-the-last-part-is-cut-off-how-can-this-be-fixed-discord-py
+# FFmpeg options for audio playback
 ffmpeg_options = {
 	'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
 	'options': '-vn'
@@ -85,73 +55,65 @@ class YTDLSource(discord.PCMVolumeTransformer):
 	@classmethod
 	async def from_url(cls, url, *, loop=None, stream=True):
 		loop = loop or asyncio.get_event_loop()
-		data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+		try:
+			data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+			if 'entries' in data:
+				# Take first item from a playlist if multiple entries
+				data = data['entries'][0]
+			filename = data['url'] if stream else ytdl.prepare_filename(data)
+			return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+		except Exception as e:
+			print(f"Error extracting info from YouTube URL: {e}")
+			return None
 
-		if 'entries' in data:
-			# take first item from a playlist
-			data = data['entries'][0]
-
-		filename = data['url'] if stream else ytdl.prepare_filename(data)
-		return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
-
-async def disconnectAfterFinished(e=None):
-	await MyGlobals.voice.disconnect()
-	playing=False
+async def disconnect_after_finished(e=None):
+	"""Disconnect from voice channel after playback is finished, handling errors if any."""
+	await MyGlobals.voice_client.disconnect()
+	MyGlobals.playing = False
 	if e:
-		print('Player error: %s' % e);
+		print(f'Player error: {e}')
 
-def searchYT(word):
-	# If word is a url, return it
-	reg = '^(https?\:\/\/)?(www\.youtube\.com|youtu\.?be)\/.+$'
-	if re.match(reg, word) is not None:
-		return word
-	query = urllib.parse.quote(word)
-	url = "https://www.youtube.com/results?search_query=" + query
-	# https://stackoverflow.com/questions/25500563/set-new-cookie-between-requests-with-python-requests
-	s = requests.Session()
-	r = s.get(url, stream=True)
-	s.cookies.set('CONSENT', 'WP.27b9d3', domain=".youtube.com")
-	s.cookies.set('GPS', '1', domain=".youtube.com")
-	s.cookies.set('VISITOR_INFO1_LIVE', 'HEwqS5-r_UM', domain=".youtube.com")
-	s.cookies.set('YSC', 'PSvAo9UQuSc', domain=".youtube.com")
-	r = s.get(url, stream=True)
-	reg = '"url":"\/watch\?v=([^"]+)"'
-	vid = None
-	for match in re.finditer(reg, r.text):
-		vid = match.group(1)
-		break
-	if vid is None:
-		return None
-	return 'https://www.youtube.com/watch?v=' + vid
+def search_youtube(query):
+	"""Search YouTube and return the URL of the first matching video."""
+	# If input is already a YouTube URL, return it directly
+	if re.match(r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+$', query):
+		return query
 
-### YouTube - End
+	query_encoded = urllib.parse.quote(query)
+	search_url = f"https://www.youtube.com/results?search_query={query_encoded}"
+	session = requests.Session()
+	session.cookies.set('CONSENT', 'WP.27b9d3', domain=".youtube.com")
+	response = session.get(search_url)
 
+	match = re.search(r'"url":"\/watch\?v=([^"]+)"', response.text)
+	if match:
+		video_id = match.group(1)
+		return f'https://www.youtube.com/watch?v={video_id}'
+	return None
 
+# Miscellaneous Functions
 mangle_lines = {}
 
 def get_random_lang(long_list, short_list):
-	random_index = random.randint(0, len(long_list) - 1)
-	random_lang = long_list[random_index]
+	"""Select a random language from `long_list` not in `short_list` and add it to `short_list`."""
+	random_lang = random.choice(long_list)
 	if random_lang not in short_list:
 		short_list.append(random_lang)
 	else:
 		return get_random_lang(long_list, short_list)
 	return short_list
 
-
 def translate(text, in_lang='auto', out_lang='en', verify_ssl=True):
-	raw = False
-	if str(out_lang).endswith('-raw'):
+	"""Translate text using Google Translate API."""
+	is_raw_output = out_lang.endswith('-raw')
+	if is_raw_output:
 		out_lang = out_lang[:-4]
-		raw = True
 
 	headers = {
-		'User-Agent': 'Mozilla/5.0' +
-		'(X11; U; Linux i686)' +
-		'Gecko/20071127 Firefox/2.0.0.11'
+		'User-Agent': 'Mozilla/5.0 (X11; U; Linux i686) Gecko/20071127 Firefox/2.0.0.11'
 	}
 
-	query = {
+	params = {
 		"client": "gtx",
 		"sl": in_lang,
 		"tl": out_lang,
@@ -159,50 +121,65 @@ def translate(text, in_lang='auto', out_lang='en', verify_ssl=True):
 		"q": text,
 	}
 	url = "http://translate.googleapis.com/translate_a/single"
-	result = requests.get(url, params=query, timeout=40, headers=headers,
-	                      verify=verify_ssl).text
-
-	if result == '[,,""]':
-		return None, in_lang
-
-	while ',,' in result:
-		result = result.replace(',,', ',null,')
-		result = result.replace('[,', '[null,')
-
-	data = json.loads(result)
-
-	if raw:
-		return str(data), 'en-raw'
 
 	try:
-		language = data[2]  # -2][0][0]
-	except:
-		language = '?'
+		response = requests.get(url, params=params, timeout=40, headers=headers, verify=verify_ssl)
+		response.raise_for_status()
+		result = response.text
 
-	return ''.join(x[0] for x in data[0]), language
+		if result == '[,,""]':
+			return None, in_lang
 
+		while ',,' in result:
+			result = result.replace(',,', ',null,').replace('[,', '[null,')
 
+		data = json.loads(result)
 
-uri = 'http://en.wiktionary.org/w/index.php?title=%s&printable=yes'
-r_tag = re.compile(r'<[^>]+>')
-r_ul = re.compile(r'(?ims)<ul>.*?</ul>')
+		if is_raw_output:
+			return str(data), 'en-raw'
 
-def text(html):
-	text = r_tag.sub('', html).strip()
-	text = text.replace('\n', ' ')
-	text = text.replace('\r', '')
-	text = text.replace('(intransitive', '(intr.')
-	text = text.replace('(transitive', '(trans.')
-	return text
+		language = data[2] if len(data) > 2 else '?'
+		translated_text = ''.join(x[0] for x in data[0])
+		return translated_text, language
+	except requests.RequestException as e:
+		print(f"Request error during translation: {e}")
+		return None, in_lang
+	except (json.JSONDecodeError, IndexError) as e:
+		print(f"Error parsing translation data: {e}")
+		return None, in_lang
 
-def wikt(word):
-	bytes = html.unescape(requests.get(uri % urllib.parse.quote(word), stream=True).text)
-	bytes = r_ul.sub('', bytes)
+# Wiktionary lookups
+wiktionary_uri = 'http://en.wiktionary.org/w/index.php?title={}&printable=yes'
+tag_pattern = re.compile(r'<[^>]+>')
+unordered_list_pattern = re.compile(r'(?ims)<ul>.*?</ul>')
+
+def clean_html_tags(html_content):
+	"""Clean HTML tags from the provided content and format text."""
+	cleaned_text = tag_pattern.sub('', html_content).strip()
+	return (
+		cleaned_text.replace('\n', ' ')
+		.replace('\r', '')
+		.replace('(intransitive', '(intr.')
+		.replace('(transitive', '(trans.')
+	)
+
+def fetch_wiktionary_entry(word):
+	"""Fetch definitions from Wiktionary for the specified word."""
+	try:
+		response = requests.get(wiktionary_uri.format(quote(word)), stream=True)
+		response.raise_for_status()
+		content = html.unescape(response.text)
+		cleaned_content = unordered_list_pattern.sub('', content)
+	except requests.RequestException as e:
+		print(f"Error fetching Wiktionary entry: {e}")
+		return None, {}
 
 	mode = None
 	etymology = None
 	definitions = {}
-	for line in bytes.splitlines():
+
+	for line in cleaned_content.splitlines():
+		# Identify modes (parts of speech or etymology)
 		if 'id="Etymology"' in line:
 			mode = 'etymology'
 		elif 'id="Noun"' in line:
@@ -221,465 +198,449 @@ def wikt(word):
 			mode = 'preposition'
 		elif 'id="' in line:
 			mode = None
-		elif (mode == 'etmyology') and ('<p>' in line):
-			etymology = text(line)
-		elif (mode is not None) and ('<li>' in line):
-			definitions.setdefault(mode, []).append(text(line))
+
+		# Capture etymology or definition lines
+		elif mode == 'etymology' and '<p>' in line:
+			etymology = clean_html_tags(line)
+		elif mode and '<li>' in line:
+			definitions.setdefault(mode, []).append(clean_html_tags(line))
+
 		if '<hr' in line:
 			break
+
 	return etymology, definitions
 
-parts = ('preposition', 'particle', 'noun', 'verb',
-	'adjective', 'adverb', 'interjection')
+# Part of speech categories to display
+parts_of_speech = ('preposition', 'particle', 'noun', 'verb', 'adjective', 'adverb', 'interjection')
 
-def format(result, definitions, number=2):
-	for part in parts:
+def format_definitions(result, definitions, max_definitions=2):
+	"""Format definitions for display with a limit on the number per part of speech."""
+	for part in parts_of_speech:
 		if part in definitions:
-			defs = definitions[part][:number]
-			result += u'\n\n**{}**: '.format(part)
-			n = ['\n%s. %s' % (i + 1, e.strip(' .')) for i, e in enumerate(defs)]
-			result += ', '.join(n)
+			defs = definitions[part][:max_definitions]
+			formatted_defs = '\n'.join(f'{i + 1}. {e.strip(" .")}' for i, e in enumerate(defs))
+			result += f'\n\n**{part.capitalize()}**: {formatted_defs}'
 	return result.strip(' .,')
-
 
 # Discord integration
 class Utilities(commands.Cog):
-
-	"""Useful commands for everyday life.""" # Shows as description in ".help Utilities"
+	"""Useful commands for everyday life."""
 
 	def __init__(self, client):
 		self.client = client
 
-	@commands.command(name='8', description='Ask the magic 8ball a question! Usage: `.8 <question>`')
+	@commands.command(name='8', description='Ask the magic 8-ball a question! Usage: `.8 <question>`')
 	async def ball(self, ctx):
-		"""Ask the magic 8ball a question! Usage: .8 <question>"""
-		messages = ["It is certain"," It is decidedly so","Without a doubt","Yes definitely",
-			"You may rely on it","As I see it yes","Most likely","Outlook good","Yes",
-			"Signs point to yes","Reply hazy try again","Ask again later","Better not tell you now",
-			"Cannot predict now","Concentrate and ask again","Don't count on it","My reply is no",
-			"God says no","Very doubtful","Outlook not so good"]
-		answer = random.randint(0,len(messages) - 1)
-		return await ctx.channel.send(messages[answer]);
+		"""Ask the magic 8-ball a question."""
+		responses = [
+			"It is certain", "It is decidedly so", "Without a doubt", "Yes definitely",
+			"You may rely on it", "As I see it yes", "Most likely", "Outlook good", "Yes",
+			"Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now",
+			"Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no",
+			"God says no", "Very doubtful", "Outlook not so good"
+		]
+		await ctx.channel.send(random.choice(responses))
 
-	@commands.command(pass_context=True, description='Look up a video on YouTube. Usage: `.yt <search_phrase>`')
-	async def yt(self, ctx, *, word : str = None):
-		"""Look up a video on YouTube. Usage: `.yt <search_phrase>`"""
-		if word is None:
-			return await ctx.channel.send('**{0}:** You must tell me what to look up!'.format(ctx.author.name))
-		url = searchYT(word)
-		if url is None:
-			return await ctx.channel.send('**{0}:** Could not find a video.'.format(ctx.author.name))
-		return await ctx.channel.send(url)
+	@commands.command(description='Look up a video on YouTube. Usage: `.yt <search_phrase>`')
+	async def yt(self, ctx, *, search_phrase: str = None):
+		"""Look up a video on YouTube."""
+		if not search_phrase:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please provide a search term.")
+			return
+		url = search_youtube(search_phrase)
+		if not url:
+			await ctx.channel.send(f"**{ctx.author.name}:** Could not find a video for '{search_phrase}'.")
+		else:
+			await ctx.channel.send(url)
 
+	@commands.command(description='Text to speech with optional language hint. Usage: `.tts es`')
+	async def tts(self, ctx, *, lang_code: str = "en"):
+		"""Text to speech with optional language hint."""
+		if "streamer" not in [role.name.lower() for role in ctx.author.roles]:
+			await ctx.channel.send(f"**{ctx.author.name}:** You do not have permission to use this command.")
+			return
 
-	@commands.command(pass_context=True, description='Text to speech with optional language hint. Usage: `.tts es`')
-	async def tts(self, ctx, *, word : str = None):
-		"""Text to speech with optional language hint. Usage: `.tts es`"""
-		if not "streamer" in [y.name.lower() for y in ctx.author.roles]:
-			return await ctx.channel.send('**{0}:** You do not have permission to use this command.'.format(ctx.author.name))
-		global playing
-		if playing:
-			return await ctx.channel.send('**{0}:** Cannot use TTS with YouTube song!'.format(ctx.author.name))
-		if MyGlobals.tts_v:
-			await MyGlobals.voice.disconnect()
-			MyGlobals.tts_v = False
-			MyGlobals.lang = "en"
-			return await ctx.channel.send('**{0}:** Stopped TTS.'.format(ctx.author.name))
+		if MyGlobals.tts_enabled:
+			await self.stop_tts(ctx)
+			return
+
+		if ctx.author.voice is None:
+			await ctx.channel.send(f"**{ctx.author.name}:** You must join a voice channel!")
+			return
+
 		try:
-			if not ctx.author.voice:
-				return await ctx.channel.send('**{0}:** You must join a voice channel!'.format(ctx.author.name))
-			MyGlobals.tts_v = True
-			if word is None:
-				MyGlobals.lang = "en"
-			else:
-				MyGlobals.lang = word
-			if MyGlobals.voice is not None and MyGlobals.voice.is_connected():
-				await MyGlobals.voice.disconnect()
-			voice_channel = ctx.author.voice.channel
-			MyGlobals.voice = await voice_channel.connect()
+			await self.start_tts(ctx, lang_code)
 		except Exception as e:
-			MyGlobals.tts_v = False
+			MyGlobals.tts_enabled = False
 			MyGlobals.lang = "en"
-			MyGlobals.voice = None
-			return await ctx.channel.send(str(e))
+			MyGlobals.voice_client = None
+			await ctx.channel.send(f"Error: {e}")
 
+	async def start_tts(self, ctx, lang_code):
+		"""Start TTS playback."""
+		MyGlobals.tts_enabled = True
+		MyGlobals.lang = lang_code
+		voice_channel = ctx.author.voice.channel
+		if MyGlobals.voice_client and MyGlobals.voice_client.is_connected():
+			await MyGlobals.voice_client.move_to(voice_channel)
+		else:
+			MyGlobals.voice_client = await voice_channel.connect()
 
-	# ERROR: No video formats found
-	# ^ Upgrade youtube-dl with pip
-	@commands.command(pass_context=True, description='Play a YouTube video in voice channel. Usage: `.ytc <search_phrase or url>`')
-	async def ytc(self, ctx, *, word : str = None):
-		"""Play a YouTube video in voice channel. Usage: `.ytc <search_phrase or url>`"""
-		if not "streamer" in [y.name.lower() for y in ctx.author.roles]:
-			return await ctx.channel.send('**{0}:** You do not have permission to use this command.'.format(ctx.author.name))
-		global voice_channel
-		global playing
-		if MyGlobals.tts_v:
-			return await ctx.channel.send('**{0}:** Cannot play while TTS is on!'.format(ctx.author.name))
-		if word is None:
-			return await ctx.channel.send('**{0}:** You must tell me what to look up!'.format(ctx.author.name))
+	async def stop_tts(self, ctx):
+		"""Stop TTS playback."""
+		await MyGlobals.voice_client.disconnect()
+		MyGlobals.tts_enabled = False
+		MyGlobals.lang = "en"
+		await ctx.channel.send(f"**{ctx.author.name}:** Stopped TTS.")
+
+	@commands.command(description='Play a YouTube video in voice channel. Usage: `.ytc <search_phrase or url>`')
+	async def ytc(self, ctx, *, search_phrase: str = None):
+		"""Play a YouTube video in the voice channel."""
+		if "streamer" not in [role.name.lower() for role in ctx.author.roles]:
+			await ctx.channel.send(f"**{ctx.author.name}:** You do not have permission to use this command.")
+			return
+
+		if MyGlobals.tts_enabled:
+			await ctx.channel.send(f"**{ctx.author.name}:** Cannot play YouTube video while TTS is active.")
+			return
+
+		if ctx.author.voice is None:
+			await ctx.channel.send(f"**{ctx.author.name}:** You must join a voice channel!")
+			return
+
+		if not search_phrase:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please provide a search term or URL.")
+			return
+
 		try:
-			if not ctx.author.voice:
-				return await ctx.channel.send('**{0}:** You must join a voice channel!'.format(ctx.author.name))
-			voice_channel = ctx.author.voice.channel
-			if MyGlobals.voice is not None and MyGlobals.voice.is_connected() and MyGlobals.voice.channel != voice_channel:
-				await MyGlobals.voice.disconnect()
-			async with ctx.typing():
-				MyGlobals.player = await YTDLSource.from_url(searchYT(word), loop=self.client.loop)
-				if MyGlobals.voice and MyGlobals.voice.is_connected():
-					await voice.move_to(voice_channel)
-				else:
-					MyGlobals.voice = await voice_channel.connect()
-				if MyGlobals.voice.is_playing():
-					MyGlobals.voice.stop()
-				MyGlobals.voice.play(MyGlobals.player)
-			await ctx.send('Now playing: {}'.format(MyGlobals.player.title))
-			playing = True
+			await self.play_youtube_audio(ctx, search_phrase)
 		except Exception as e:
-			return await ctx.channel.send(str(e))
+			await ctx.channel.send(f"Error: {e}")
 
-	@commands.command(pass_context=True, description='Pause / resume audio from voice channel. Usage: `.ytp`')
+	async def play_youtube_audio(self, ctx, search_phrase):
+		"""Play YouTube audio in voice channel."""
+		url = search_youtube(search_phrase)
+		if not url:
+			await ctx.channel.send(f"**{ctx.author.name}:** Could not find a video.")
+			return
+
+		voice_channel = ctx.author.voice.channel
+		if MyGlobals.voice_client and MyGlobals.voice_client.is_connected():
+			await MyGlobals.voice_client.move_to(voice_channel)
+		else:
+			MyGlobals.voice_client = await voice_channel.connect()
+
+		async with ctx.typing():
+			MyGlobals.audio_player = await YTDLSource.from_url(url, loop=self.client.loop)
+			if MyGlobals.voice_client.is_playing():
+				MyGlobals.voice_client.stop()
+			MyGlobals.voice_client.play(MyGlobals.audio_player)
+		await ctx.send(f"Now playing: {MyGlobals.audio_player.title}")
+		MyGlobals.playing = True
+	@commands.command(description='Pause or resume audio from voice channel. Usage: `.ytp`')
+
 	async def ytp(self, ctx):
+		"""Toggle pause/resume for audio in the voice channel."""
 		try:
-			if MyGlobals.voice is not None:
-				if MyGlobals.voice.is_playing() and not MyGlobals.voice.is_paused():
-					await ctx.send('Pausing audio.')
-					MyGlobals.voice.pause()
-				elif MyGlobals.voice.is_paused():
-					await ctx.send('Resuming audio.')
-					MyGlobals.voice.resume()
+			if MyGlobals.voice_client and MyGlobals.voice_client.is_connected():
+				if MyGlobals.voice_client.is_playing() and not MyGlobals.voice_client.is_paused():
+					MyGlobals.voice_client.pause()
+					await ctx.send('Audio paused.')
+				elif MyGlobals.voice_client.is_paused():
+					MyGlobals.voice_client.resume()
+					await ctx.send('Audio resumed.')
+				else:
+					await ctx.send("No audio is playing.")
+			else:
+				await ctx.send("Not connected to a voice channel.")
 		except Exception as e:
-			return await ctx.channel.send(str(e))
+			await ctx.send(f"Error: {e}")
 
-	@commands.command(pass_context=True, description='Disconnect from voice channel. Usage: `.ytd`')
+	@commands.command(description='Disconnect from voice channel. Usage: `.ytd`')
 	async def ytd(self, ctx):
 		"""Disconnect from voice channel."""
-		if not "streamer" in [y.name.lower() for y in ctx.author.roles]:
-			return await ctx.channel.send('**{0}:** You do not have permission to use this command.'.format(ctx.author.name))
-		if MyGlobals.tts_v:
-			return await ctx.channel.send('**{0}:** Cannot use with TTS on!'.format(ctx.author.name))
-		global playing
-		if not playing:
-			return await ctx.channel.send('**{0}:** YouTube video is not playing.'.format(ctx.author.name))
-		await MyGlobals.voice.disconnect()
-		playing = False
+		if "streamer" not in [role.name.lower() for role in ctx.author.roles]:
+			await ctx.send(f"**{ctx.author.name}:** You do not have permission to use this command.")
+			return
+		if MyGlobals.tts_enabled:
+			await ctx.send(f"**{ctx.author.name}:** Cannot disconnect while TTS is active.")
+			return
 
-	@commands.command(pass_context=True, description='Look up a word on UrbanDictionary. Usage: `.ud <word>`')
-	async def ud(self, ctx, *, word : str = None):
+		if MyGlobals.voice_client and MyGlobals.voice_client.is_connected():
+			await MyGlobals.voice_client.disconnect()
+			MyGlobals.playing = False
+			await ctx.send("Disconnected from the voice channel.")
+		else:
+			await ctx.send("Not connected to a voice channel.")
+
+	@commands.command(description='Look up a word on UrbanDictionary. Usage: `.ud <word>`')
+	async def ud(self, ctx, *, word: str = None):
 		"""Look up a word on UrbanDictionary."""
-		if word is None:
-			return await ctx.channel.send('**{0}:** You must tell me what to look up!'.format(ctx.author.name))
-		r = requests.get("http://www.urbandictionary.com/define.php?term={}".format(word))
-		soup = BeautifulSoup(r.content, "html.parser")
-		meaning = soup.find("div",attrs={"class":"meaning"})
-		if meaning is None:
-			return await ctx.channel.send("**{0}:** Couldn't get any definitions for \'%s\'.".format(ctx.author.name) % word)
-		meaning = meaning.get_text()
-		meaning.replace("&apos", "'")
+		if not word:
+			await ctx.send(f"**{ctx.author.name}:** Please provide a word to look up.")
+			return
+
 		try:
-			if any(x in meaning.lower() for x in config.bad_words):
-				meaning = "*- nsfw -*"
-		except NameError:
-			pass
-		meaning = "**{0}:** ".format(ctx.author.name) + meaning
-		if meaning is None:
-			return await ctx.channel.send("**{0}:** Couldn't get any definitions for \'%s\'.".format(ctx.author.name) % word)
-		elif len(meaning) > 300:
-			meaning = meaning[:295] + '[...]'
-		await ctx.channel.send(meaning)
+			url = f"http://www.urbandictionary.com/define.php?term={word}"
+			response = requests.get(url)
+			response.raise_for_status()
+			soup = BeautifulSoup(response.content, "html.parser")
+			meaning = soup.find("div", attrs={"class": "meaning"})
+			
+			if meaning:
+				meaning_text = meaning.get_text().replace("&apos", "'")
+				if any(bad_word in meaning_text.lower() for bad_word in config.bad_words):
+					meaning_text = "*- nsfw -*"
+				
+				if len(meaning_text) > 300:
+					meaning_text = meaning_text[:295] + '[...]'
+				await ctx.send(f"**{ctx.author.name}:** {meaning_text}")
+			else:
+				await ctx.send(f"**{ctx.author.name}:** Couldn't find any definitions for '{word}'.")
+		except requests.RequestException as e:
+			await ctx.send(f"Error fetching UrbanDictionary entry: {e}")
+		except Exception as e:
+			await ctx.send(f"Error processing UrbanDictionary entry: {e}")
 
-
-
-	@commands.command(pass_context=True, description='Look up a word on Wiktionary. Usage: `.wt <word>`')
-	async def wt(self, ctx, *, word : str = None):
+	@commands.command(description='Look up a word on Wiktionary. Usage: `.wt <word>`')
+	async def wt(self, ctx, *, word: str = None):
 		"""Look up a word on Wiktionary."""
-		if word is None:
-			return await ctx.channel.send('**{0}:** You must tell me what to look up!'.format(ctx.author.name))
+		if not word:
+			await ctx.send(f"**{ctx.author.name}:** Please provide a word to look up.")
+			return
 
-		_etymology, definitions = wikt(word)
-		if not definitions:
-			return await ctx.channel.send("**{0}:** Couldn't get any definitions for \'%s\'.".format(ctx.author.name) % word)
+		try:
+			etymology, definitions = fetch_wiktionary_entry(word)
+			if not definitions:
+				await ctx.send(f"**{ctx.author.name}:** Couldn't find any definitions for '{word}'.")
+				return
+			
+			result = format_definitions(f"**__{word}__**", definitions)
+			if len(result) > 300:
+				result = result[:295] + '[...]'
+			await ctx.send(result)
+		except Exception as e:
+			await ctx.send(f"Error fetching Wiktionary entry: {e}")
 
-		word = "**__{}__**".format(word)
-		result = format(word, definitions)
-		if len(result) < 150:
-			result = format(word, definitions, 3)
-		if len(result) < 150:
-			result = format(word, definitions, 5)
-		elif len(result) > 300:
-			result = result[:295] + '[...]'
-		await ctx.channel.send(result)
-
-	@commands.command(pass_context=True, description='Look up something on Wikipedia. Usage: `.w <phrase>`')
-	async def w(self, ctx, *, phrase : str = None):
+	@commands.command(description='Look up something on Wikipedia. Usage: `.w <phrase>`')
+	async def w(self, ctx, *, phrase: str = None):
 		"""Look up something on Wikipedia."""
 
-		if phrase is None or phrase.strip() == '':
-			return await ctx.channel.send('**{0}:** You must tell me what to look up!'.format(ctx.author.name))
-
-		if (len(phrase) > 2000):
-			return await ctx.channel.send('**{0}:** Phrase must be under 2000 characters.'.format(ctx.author.name))
-
-		lang = 'en'
-		show_url=True
-
-		msg_array = phrase.split( )
-		if msg_array[0].startswith(":"):
-			lang = msg_array[0][1:]
-			msg_array.pop(0)
-			phrase = " ".join(msg_array)
-
-		server = lang + '.wikipedia.org'
-
-
-		search_url = ('https://%s/w/api.php?format=json&action=query'
-			'&list=search&srlimit=%d&srprop=timestamp&srwhat=text'
-			'&srsearch=') % (server, 1)
-		search_url += phrase
-
-		query = get(search_url).json()
-
-		if 'query' in query:
-			query = query['query']['search']
-			query_r = [r['title'] for r in query]
-			if query_r:
-				query = query_r[0]
-			else:
-				return await ctx.channel.send("**{0}:** Couldn't get any results for \'%s\'.".format(ctx.author.name) % phrase)
-		else:
-			return await ctx.channel.send("**{0}:** Couldn't get any results for \'%s\'.".format(ctx.author.name) % phrase)
-
-		page_name = query.replace('_', ' ')
-		query = urllib.parse.quote(query.replace(' ', '_'))
-		try:
-			snippet_url = ('https://' + server + '/w/api.php?format=json'
-				'&action=query&prop=extracts&exintro&explaintext'
-				'&exchars=300&redirects&titles=')
-			snippet_url += query
-			snippet = get(snippet_url).json()
-			snippet = snippet['query']['pages']
-
-			# For some reason, the API gives the page *number* as the key, so we just
-			# grab the first page number in the results.
-			snippet = snippet[list(snippet.keys())[0]]
-
-			snippet = snippet['extract']
-		except KeyError:
-			if show_url:
-				await ctx.channel.send("[WIKIPEDIA] Error fetching snippet for \"{}\".".format(page_name))
+		if not phrase or len(phrase.strip()) == 0:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please provide a phrase to look up.")
 			return
-		msg = '[WIKIPEDIA] {} | "{}"'.format(page_name, snippet)
-		msg_url = msg + ' | <https://{}/wiki/{}>'.format(server, query)
+		if len(phrase) > 2000:
+			await ctx.channel.send(f"**{ctx.author.name}:** Phrase must be under 2000 characters.")
+			return
 
-		if show_url:
-			msg = msg_url
-		await ctx.channel.send(msg)
+		# Determine language and server
+		lang = 'en'
+		tokens = phrase.split()
+		if tokens[0].startswith(":"):
+			lang = tokens.pop(0)[1:]
+			phrase = " ".join(tokens)
 
-	@commands.command(pass_context=True, description='Translates a phrase, with an optional language hint. Usage: `.tr :en :zh <phrase>`')
-	async def tr(self, ctx, *, phrase : str = None):
-		"""Translates a phrase, with an optional language hint."""
+		server = f'{lang}.wikipedia.org'
+		search_url = f'https://{server}/w/api.php?format=json&action=query&list=search&srlimit=1&srprop=timestamp&srwhat=text&srsearch={urllib.parse.quote(phrase)}'
 
-		if phrase is None or phrase.strip() == '':
-			return await ctx.channel.send('**{0}:** You need to specify a string for me to translate!'.format(ctx.author.name))
+		# Perform search query
+		try:
+			search_response = requests.get(search_url).json()
+			search_results = search_response.get("query", {}).get("search", [])
+			if not search_results:
+				await ctx.channel.send(f"**{ctx.author.name}:** No results found for '{phrase}'.")
+				return
+			page_title = search_results[0]["title"]
+		except (requests.RequestException, KeyError) as e:
+			await ctx.channel.send(f"**{ctx.author.name}:** Error fetching search results: {e}")
+			return
 
-		if (len(phrase) > 2000):
-			return await ctx.channel.send('**{0}:** Phrase must be under 2000 characters.'.format(ctx.author.name))
+		# Fetch snippet
+		snippet_url = f'https://{server}/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&exchars=300&redirects&titles={urllib.parse.quote(page_title)}'
+		try:
+			snippet_response = requests.get(snippet_url).json()
+			page_data = next(iter(snippet_response["query"]["pages"].values()))
+			snippet = page_data.get("extract", "No extract available.")
+		except (requests.RequestException, KeyError) as e:
+			await ctx.channel.send(f"**{ctx.author.name}:** Error fetching snippet for '{page_title}': {e}")
+			return
 
+		# Format and send message
+		page_url = f'https://{server}/wiki/{urllib.parse.quote(page_title)}'
+		await ctx.channel.send(f'[WIKIPEDIA] {page_title} | "{snippet}" | <{page_url}>')
+
+	@commands.command(description='Translates a phrase with optional language hints. Usage: `.tr :en :zh <phrase>`')
+	async def tr(self, ctx, *, phrase: str = None):
+		"""Translate a phrase, with optional language hints for input and output languages."""
+		
+		if not phrase or len(phrase.strip()) == 0:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please provide a phrase to translate.")
+			return
+		if len(phrase) > 2000:
+			await ctx.channel.send(f"**{ctx.author.name}:** Phrase must be under 2000 characters.")
+			return
+
+		in_lang, out_lang, phrase_text = self.parse_languages(phrase)
+		
+		if in_lang != out_lang:
+			try:
+				translated_text, detected_lang = translate(phrase_text, in_lang, out_lang)
+				if translated_text:
+					response = f'"{translated_text}" ({detected_lang} to {out_lang}, translate.google.com)'
+				else:
+					response = f'Translation from {in_lang} to {out_lang} failed. Please check language abbreviations.'
+			except Exception as e:
+				response = f"Error in translation: {e}"
+			await ctx.channel.send(f"**{ctx.author.name}:** {response}")
+		else:
+			await ctx.channel.send(f"**{ctx.author.name}:** Could not guess the language. Please specify input and output languages.")
+
+	def parse_languages(self, phrase):
+		"""Parse the input and output languages from a given phrase."""
+		tokens = phrase.split()
 		in_lang = 'auto'
 		out_lang = 'en'
+		
+		if tokens[0].startswith(":"):
+			in_lang = tokens.pop(0)[1:]
+			if tokens and tokens[0].startswith(":"):
+				out_lang = tokens.pop(0)[1:]
+		phrase_text = " ".join(tokens)
+		
+		return in_lang, out_lang, phrase_text
 
-		msg_array = phrase.split( )
-		if msg_array[0].startswith(":"):
-			in_lang = msg_array[0][1:]
-			if msg_array[1].startswith(":"):
-				out_lang = msg_array[1][1:]
-				msg_array.pop(0)
-			msg_array.pop(0)
-			phrase = " ".join(msg_array)
-
-		if in_lang != out_lang:
-			msg, in_lang = translate(phrase, in_lang, out_lang, verify_ssl=True)
-
-			if msg:
-				msg = parse.unquote(msg)  # msg.replace('&#39;', "'")
-				msg = '"%s" (%s to %s, translate.google.com)' % (msg, in_lang, out_lang)
-			else:
-				msg = 'The %s to %s translation failed, are you sure you specified valid language abbreviations?' % (in_lang, out_lang)
-
-			await ctx.channel.send("**" + ctx.author.name + ":** " + msg)
-		else:
-			await ctx.channel.send('**{0}:** Language guessing failed, so try suggesting one!'.format(ctx.author.name))
-
-	@commands.command(pass_context=True, description='Repeatedly translate the input until it makes absolutely no sense. Usage: `.mangle <phrase>`')
-	async def mangle(self, ctx, *, phrase : str = None):
-		"""Repeatedly translate the input until it makes absolutely no sense."""
-		global mangle_lines
+	@commands.command(description='Repeatedly translates the input until it becomes nonsensical. Usage: `.mangle <phrase>`')
+	async def mangle(self, ctx, *, phrase: str = None):
+		"""Repeatedly translates the input to multiple languages until it loses meaning."""
+		
 		long_lang_list = ['fr', 'de', 'es', 'it', 'no', 'he', 'la', 'ja', 'cy', 'ar', 'yi', 'zh', 'nl', 'ru', 'fi', 'hi', 'af', 'jw', 'mr', 'ceb', 'cs', 'ga', 'sv', 'eo', 'el', 'ms', 'lv']
-		lang_list = []
-		for __ in range(0, 8):
-			lang_list = get_random_lang(long_lang_list, lang_list)
-		random.shuffle(lang_list)
-		if phrase is None:
-			if MyGlobals.last_message is None:
-				return await ctx.channel.send('**{0}:** What do you want me to mangle?'.format(ctx.author.name))
-			else:
-				phrase = (MyGlobals.last_message.strip(), '')
-		else:
-			phrase = (phrase.strip(), '')
-		if phrase[0] == '':
-			return await ctx.channel.send('**{0}:** What do you want me to mangle?'.format(ctx.author.name))
-
-		for lang in lang_list:
-			backup = phrase
-			try:
-				phrase = translate(phrase[0], 'en', lang, True)
-			except:
-				phrase = False
+		lang_sequence = random.sample(long_lang_list, 8)
+		
+		if not phrase:
+			phrase = MyGlobals.last_message or ""
 			if not phrase:
-				phrase = backup
-				break
+				await ctx.channel.send(f"**{ctx.author.name}:** Please specify a phrase to mangle.")
+				return
 
+		mangled_text = phrase.strip()
+
+		for lang in lang_sequence:
 			try:
-				phrase = translate(phrase[0], lang, 'en', True)
-			except:
-				phrase = backup
-				continue
+				# Translate to a random language and then back to English
+				mangled_text, _ = translate(mangled_text, 'en', lang)
+				mangled_text, _ = translate(mangled_text, lang, 'en')
+			except Exception as e:
+				await ctx.channel.send(f"Error during mangling: {e}")
+				return
+		
+		await ctx.channel.send(f"**{ctx.author.name}:** {mangled_text}")
 
-			if not phrase:
-				phrase = backup
-				break
-		return await ctx.channel.send('**{0}:** '.format(ctx.author.name) + phrase[0])
-
-	@commands.command(pass_context=True, description='Get the time in a specific timezone. Usage: `.time Asia/Hong_Kong`')
-	async def time(self, ctx, *, zone : str = None):
+	@commands.command(description='Get the time in a specific timezone. Usage: `.time Asia/Hong_Kong`')
+	async def time(self, ctx, *, zone: str = None):
 		"""Get the time in a specific timezone."""
-		if zone is None or zone.strip() == '':
-			return await ctx.channel.send('**{0}:** You need to specify a timezone for me to convert!'.format(ctx.author.name))
-		dateFormat = '%Y-%m-%d %H:%M:%S %Z %z'
+		if not zone:
+			await ctx.channel.send(f"**{ctx.author.name}:** You need to specify a timezone.")
+			return
+
 		try:
-			return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, datetime.now(pytz.utc if zone is None else pytz.timezone(zone)).strftime(dateFormat)))
-		except pytz.exceptions.UnknownTimeZoneError:
-			return await ctx.channel.send('**{0}**: Timezone not recognized. You may find a list of timezones here: <https://gist.github.com/heyalexej/8bf688fd67d7199be4a1682b3eec7568>'.format(ctx.author.name))
-
-	@commands.command(pass_context=True, description='Converts kg to lbs and vice-versa. Usage: `.weight 60kg` or `.weight 130lbs`')
-	async def weight(self, ctx, *, wStr : str = None):
-		"""Converts kg to lbs and vice-versa."""
-		if wStr is None or wStr.strip() == '':
-			return await ctx.channel.send('**{0}:** You need to specify a weight for me to convert!'.format(ctx.author.name))
-		w = re.search("(\d+\.?\d*) *[Kk][Gg]", wStr)
-		if w is not None:
-			w = float(w.group(1))
-			lbs = round(w*2.20462, 2)
-			return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, str(lbs) + "lbs"))
-		w = re.search("(\d+\.?\d*) *[Ll][Bb][Ss]", wStr)
-		if w is not None:
-			w = float(w.group(1))
-			kg = round(w/2.20462, 2)
-			return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, str(kg) + "kg"))
-		return await ctx.channel.send('**{0}**: Invalid weight format. Usage: `.weight 60kg` or `.weight 130lbs`'.format(ctx.author.name))
-
-
-	@commands.command(pass_context=True, description='Interact with OpenAI. Usage: `.ai What is Hero Fighter?`', enabled=False, hidden=True)
-	async def ai(self, ctx, *, phrase : str = None):
-		"""Interact with OpenAI."""
-		print("test")
-		if phrase is None or phrase.strip() == '':
-                        return await ctx.channel.send('**{0}:** You did not give me any input.'.format(ctx.author.name))
-
-		# Set up the model: https://platform.openai.com/docs/models/gpt-3
-		model_engine = "text-davinci-003"
-
-		# Generate a response
-		completion = openai.Completion.create(
-			engine=model_engine,
-			prompt=phrase,
-			max_tokens=2000,
-			n=1,
-			stop=None,
-			temperature=0.5,
-		)
-
-		response = completion.choices[0].text
-
-		return await ctx.channel.send('**{0}**: {1}'.format(ctx.author.name, response))
-
-
-	# https://platform.openai.com/docs/guides/images/usage
-	@commands.command(pass_context=True, description='Generate an image with OpenAI given a description. Usage: `.ai_img Davis character from Little Fighter 2`', enabled=False, hidden=True)
-	async def ai_img(self, ctx, *, phrase : str = None):
-		"""Generate an image with OpenAI given a description."""
-
-		if phrase is None or phrase.strip() == '':
-			return await ctx.channel.send('**{0}:** You did not give me any input.'.format(ctx.author.name))
-
-		# https://github.com/Rapptz/discord.py/tree/master/examples/views
-		class NumberDropdownView(discord.ui.View):
-			@discord.ui.select(
-				options = [
-					discord.SelectOption(label='1', description='One'),
-					discord.SelectOption(label='2', description='Two'),
-					discord.SelectOption(label='3', description='Three'),
-					discord.SelectOption(label='4', description='Four'),
-					discord.SelectOption(label='5', description='Five'),
-				],
-				placeholder = 'Choose the number of images to generate...',
-				min_values = 1,
-				max_values = 1
+			timezone = pytz.timezone(zone)
+			current_time = datetime.now(timezone).strftime('%Y-%m-%d %H:%M:%S %Z %z')
+			await ctx.channel.send(f"**{ctx.author.name}**: {current_time}")
+		except pytz.UnknownTimeZoneError:
+			await ctx.channel.send(
+				f"**{ctx.author.name}**: Unrecognized timezone. Check valid timezones here: <https://gist.github.com/heyalexej/8bf688fd67d7199be4a1682b3eec7568>"
 			)
-			async def select_callback(self, interaction, select):
-				self.value = select.values[0]
-				select.disabled = True
-				#await interaction.response.send_message(f'The number of images to generate is {self.value}.')
-				# https://stackoverflow.com/a/71179045/3049315
-				#await interaction.response.defer()
-				# Remove dropdown
-				await interaction.response.edit_message(view=None)
-				self.stop()
 
-		class SizeDropdownView(discord.ui.View):
-                        @discord.ui.select(
-                                options = [
-                                        discord.SelectOption(label='256x256'),
-                                        discord.SelectOption(label='512x512'),
-                                        discord.SelectOption(label='1024x1024'),
-                                ],
-                                placeholder = 'Choose the size of the images to generate...',
-                                min_values = 1,
-                                max_values = 1
-                        )
-                        async def select_callback(self, interaction, select):
-                                self.value = select.values[0]
-                                select.disabled = True
-                                await interaction.response.edit_message(view=None)
-                                self.stop()
+	@commands.command(description='Converts kg to lbs and vice-versa. Usage: `.weight 60kg` or `.weight 130lbs`')
+	async def weight(self, ctx, *, weight_str: str = None):
+		"""Converts kg to lbs and vice-versa."""
+		if not weight_str:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please specify a weight.")
+			return
 
+		kg_match = re.search(r"(\d+\.?\d*) *[Kk][Gg]", weight_str)
+		lbs_match = re.search(r"(\d+\.?\d*) *[Ll][Bb][Ss]", weight_str)
 
-		view = NumberDropdownView()
+		if kg_match:
+			kg = float(kg_match.group(1))
+			lbs = round(kg * 2.20462, 2)
+			await ctx.channel.send(f"**{ctx.author.name}**: {lbs} lbs")
+		elif lbs_match:
+			lbs = float(lbs_match.group(1))
+			kg = round(lbs / 2.20462, 2)
+			await ctx.channel.send(f"**{ctx.author.name}**: {kg} kg")
+		else:
+			await ctx.channel.send(f"**{ctx.author.name}:** Invalid format. Usage: `.weight 60kg` or `.weight 130lbs`.")
 
-		msg = await ctx.send('Select number of images to generate:', view=view)
-		await view.wait()
-		await msg.delete()
+	@commands.command(description='Interact with OpenAI. Usage: `.ai What is Hero Fighter?`', enabled=False, hidden=True)
+	async def ai(self, ctx, *, phrase: str = None):
+		"""Interact with OpenAI."""
+		if not phrase:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please provide input for OpenAI.")
+			return
 
-		n = int(view.value)
+		try:
+			response = openai.Completion.create(
+				engine="text-davinci-003",
+				prompt=phrase,
+				max_tokens=2000,
+				temperature=0.5
+			)
+			await ctx.channel.send(f"**{ctx.author.name}**: {response.choices[0].text.strip()}")
+		except Exception as e:
+			await ctx.channel.send(f"Error with OpenAI API: {e}")
 
-		view = SizeDropdownView()
+	@commands.command(description='Generate an image with OpenAI given a description. Usage: `.ai_img <description>`', enabled=False, hidden=True)
+	async def ai_img(self, ctx, *, phrase: str = None):
+		"""Generate an image with OpenAI given a description."""
+		if not phrase:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please provide an image description.")
+			return
 
-		msg = await ctx.send('Select the size of the images to generate:', view=view)
-		await view.wait()
-		await msg.delete()
+		num_images = await self.get_user_selection(ctx, "Select number of images to generate:", ["1", "2", "3", "4", "5"])
+		if num_images is None:
+			return
 
-		size = view.value
+		image_size = await self.get_user_selection(ctx, "Select the image size:", ["256x256", "512x512", "1024x1024"])
+		if image_size is None:
+			return
 
 		try:
 			response = openai.Image.create(
 				prompt=phrase,
-				n=n,
-				size=size
+				n=int(num_images),
+				size=image_size
 			)
-
 			for item in response['data']:
 				await ctx.channel.send(item['url'])
 		except Exception as e:
-			return await ctx.channel.send('**{0}:** {1}'.format(ctx.author.name, str(e)))
+			await ctx.channel.send(f"**{ctx.author.name}:** Error generating image: {e}")
+
+	async def get_user_selection(self, ctx, prompt, options):
+		"""Helper function to create a dropdown for user selection."""
+		class DropdownView(discord.ui.View):
+			def __init__(self, options):
+				super().__init__()
+				self.value = None
+				self.options = options
+
+			@discord.ui.select(
+				options=[discord.SelectOption(label=option) for option in options],
+				placeholder="Select an option...",
+				min_values=1,
+				max_values=1
+			)
+			async def select_callback(self, select, interaction):
+				self.value = select.values[0]
+				select.disabled = True
+				await interaction.response.edit_message(view=None)
+				self.stop()
+
+		view = DropdownView(options)
+		message = await ctx.send(prompt, view=view)
+		await view.wait()
+		await message.delete()
+		return view.value
 
 
 async def setup(client):

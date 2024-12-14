@@ -1,154 +1,114 @@
 from .common import *
 import re
-
-### TTS - Start
-
+import asyncio
 from gtts import gTTS
 from io import BytesIO
-import io
-import re
-import asyncio
 from .utils.FFmpegPCMAudioGTTS import FFmpegPCMAudioGTTS
 
 media_only_channels = [
-	media_channel,
-	artwork_channel,
-	hf_memes_channel,
-	memes_channel
+	MEDIA_CHANNEL_ID,
+	ARTWORK_CHANNEL_ID,
+	HF_MEMES_CHANNEL_ID,
+	MEMES_CHANNEL_ID
 ]
 
-media_url_regexps = [
-	"((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?", # youtube
-	"https?:\/\/.*\/.*\.(png|gif|webp|jpeg|jpg)\??.*", # image
-	"https:\/\/(?:www\.)?deviantart.com\/.+" # deviantart
+media_url_patterns = [
+	r"(?:https?:\/\/)?(?:www|m\.)?(youtube\.com|youtu.be)\/[\w\-]+",  # YouTube
+	r"https?:\/\/.*\.(png|gif|webp|jpeg|jpg)\??.*",				   # Images
+	r"https:\/\/(?:www\.)?deviantart.com\/.+"						 # DeviantArt
 ]
 
-def mentionsToNicks(msg):
-	str = msg.content
-	#print (str)
-	p = re.compile(r'\<@\!?([0-9]{18})\>')
-	for m in re.findall(p, str):
-		nick = msg.server.get_member(m).nick
-		if nick is None:
-			nick = msg.server.get_member(m).name
-		str = str.replace("<@" + m + ">", nick)
-		str = str.replace("<@!" + m + ">", nick)
-	return str
+def mentions_to_nicks(msg):
+	"""Convert mentions to nicknames in the given message content."""
+	text = msg.content
+	mention_pattern = re.compile(r'<@!?(\d{18})>')
 
-def removeEmojis(str):
-	p = re.compile(r'\<:(.*?)([0-9]{18})\>')
-	str = p.sub('', str)
-	return str
+	for user_id in mention_pattern.findall(text):
+		member = msg.guild.get_member(int(user_id))
+		nickname = member.nick if member and member.nick else member.name
+		text = text.replace(f"<@{user_id}>", nickname).replace(f"<@!{user_id}>", nickname)
+	return text
 
-def replaceLink(str):
-        p = re.compile(r'https?:\/\/.*?[ \t\r\n]')
-        str = p.sub('url ', str)
-        return str
+def remove_emojis(text):
+	"""Remove custom Discord emojis from the given text."""
+	return re.sub(r'<:\w+:\d{18}>', '', text)
+
+def replace_links(text):
+	"""Replace URLs in the given text with 'url'."""
+	return re.sub(r'https?:\/\/\S+', 'url', text)
 
 async def tts_f(message, client):
-	if not MyGlobals.tts_v:
+	"""Convert message text to speech and play it in the voice channel."""
+	if not MyGlobals.tts_enabled or not message.content:
 		return
-	if not message.content:
-		return
+
 	try:
-		msg = mentionsToNicks(message)
-		msg = removeEmojis(msg)
-		msg = replaceLink(msg)
-		#print(msg.encode('utf-8'))
-		tts_o = gTTS(text=msg, lang=MyGlobals.lang, slow=False)
-		while(MyGlobals.voice.is_playing()): pass
+		text = replace_links(remove_emojis(mentions_to_nicks(message)))
+		tts_obj = gTTS(text=text, lang=MyGlobals.language, slow=False)
 		mp3_fp = BytesIO()
-		tts_o.write_to_fp(mp3_fp)
+		tts_obj.write_to_fp(mp3_fp)
 		mp3_fp.seek(0)
-		#MyGlobals.player = discord.FFmpegPCMAudio(mp3_fp, pipe=True)
-		MyGlobals.player = FFmpegPCMAudioGTTS(mp3_fp.read(), pipe=True)
-		MyGlobals.voice.play(MyGlobals.player)
-	except discord.InvalidArgument as ia:
-		return await message.channel.send('**{0}:** You must join a voice channel!'.format(message.author.name))
-	except io.UnsupportedOperation as up:
-		return await message.channel.send('**{0}:** \'discord.FFmpegPCMAudio\' might have given a \'io.UnsupportedOperation\' exception: {1}'.format(message.author.name, up))
-	except ValueError as ve:
-		return await message.channel.send('**{0}:** Language \'{1}\' not supported.'.format(message.author.name, MyGlobals.lang))
+
+		while MyGlobals.voice_client.is_playing():
+			await asyncio.sleep(0.1)
+
+		MyGlobals.audio_player = FFmpegPCMAudioGTTS(mp3_fp.read(), pipe=True)
+		MyGlobals.voice_client.play(MyGlobals.audio_player)
+	except discord.InvalidArgument:
+		await message.channel.send(f"**{message.author.name}:** You need to join a voice channel first!")
+	except io.UnsupportedOperation as e:
+		await message.channel.send(f"**{message.author.name}:** An error occurred with TTS playback: {e}")
+	except ValueError:
+		await message.channel.send(f"**{message.author.name}:** Language '{MyGlobals.language}' not supported.")
 	except Exception as e:
-		return await message.channel.send(str(e))
-
-### TTS - End
-
-
+		await message.channel.send(f"Unexpected error: {e}")
 
 @client.event
 async def on_message(message):
-
-	#print (message.content.lower())
-
-	hf_bot_pattern = re.compile("^(" + re.escape(client.user.name) + "|" + re.escape(client.user.mention) + ")[ \n\t\r]*!+$", re.IGNORECASE)
-	# we do not want the bot to reply to itself
+	"""Handle incoming messages and trigger specific responses or actions."""
 	if message.author == client.user:
 		return
-	# @HF Bot
-	if (message.content.lower() == "<@!{}>".format(client.user.id)):
-		await message.channel.send('What?!')
-		return
-	# HF Bot!
-	elif (hf_bot_pattern.match(message.content) is not None):
-		msg = '{0.author.mention}!'.format(message)
-		await message.channel.send(msg)
-		return
-	# Hello/Hi HF Bot
-	elif (message.content.lower().startswith("hello {}".format(client.user.name).lower())
-		or message.content.lower().startswith("hello <@!{}>".format(client.user.id))
-		or message.content.lower().startswith("hi {}".format(client.user.name).lower())
-                or message.content.lower().startswith("hi <@!{}>".format(client.user.id))
-		):
-		msg = 'Hello {0.author.mention}'.format(message)
-		await message.channel.send(msg)
-		return
-	# Who's daddy?
-	elif (message.content.lower() == "who's daddy?"):
-		await message.channel.send(client.get_user(mangad_id).mention)
-		return
-	# Give that man a cookie
-	elif ("give that man a cookie" in message.content.lower()):
+
+	hf_bot_pattern = re.compile(fr"^(?:{re.escape(client.user.name)}|{re.escape(client.user.mention)})[ \n\t\r]*!+$", re.IGNORECASE)
+
+	if message.content.lower() == f"<@!{client.user.id}>":
+		await message.channel.send("What?!")
+	elif hf_bot_pattern.match(message.content):
+		await message.channel.send(f"{message.author.mention}!")
+	elif any(message.content.lower().startswith(greeting) for greeting in [f"hello {client.user.name}", f"hi {client.user.name}"]):
+		await message.channel.send(f"Hello {message.author.mention}")
+	elif message.content.lower() == "who's daddy?":
+		await message.channel.send(client.get_user(MANGAD_ID).mention)
+	elif "give that man a cookie" in message.content.lower():
 		await message.channel.send("http://orteil.dashnet.org/cookieclicker/")
-		return
-	elif ("bow to me" in message.content.lower() and message.author.mention == client.get_user(mangad_id).mention):
-		await message.channel.send('_bows to {0}_'.format(message.author.mention))
-		return
+	elif "bow to me" in message.content.lower() and message.author.id == MANGAD_ID:
+		await message.channel.send(f"_bows to {message.author.mention}_")
 
-	# No swearing
-	#if any(word in message.content.lower() for word in p.swearing):
-	#	await message.channel.send("https://imgur.com/a/qcWud");
-
-	if not message.content.startswith(bot_prefix):
+	if not message.content.startswith(BOT_PREFIX):
 		MyGlobals.last_message = message.content
 
-	# TTS
 	await tts_f(message, client)
 
-	# Remove text messages in #media
-	if (message.channel.id in media_only_channels) and (len(message.attachments) == 0 and not any(re.compile(r).match(message.content) for r in media_url_regexps)):
-		try:
-			await message.delete()
-			#await message.channel.send('Text messages are not allowed in this channel. If you wish to comment on a picture you may create a thread.'.format(message))
-		except discord.Forbidden:
-			await message.channel.send("{0}: I do not have permission to remove this nuisance. :frowning:".format(client.get_user(mangad_id).mention))
-		except:
-			pass
-		return
-
-
-	if (message.channel.id == introductions_channel):
-		hasIntroduced = await hasAlreadyIntroduced(message.author, message)
-
-		if hasIntroduced:
+	if message.channel.id in media_only_channels:
+		if len(message.attachments) == 0 and not any(re.search(pattern, message.content) for pattern in media_url_patterns):
 			try:
 				await message.delete()
-				response = await message.channel.send(f"{message.author.mention}: You have already introduced yourself. You may edit your introduction, but not send a new message. You may create a thread under someone's introduction message if you wish to reply to it.")
-				asyncio.create_task(delete_after_delay(response, delay=15))
+				await message.channel.send(
+					f"{message.author.mention}, text messages are not allowed here. Please comment via threads if needed.",
+					delete_after=15
+				)
 			except discord.Forbidden:
-				await message.channel.send("{0}: I do not have permission to remove this nuisance. :frowning:".format(client.get_user(mangad_id).mention))
-			except:
-				pass
-		return
+				await message.channel.send(f"{client.get_user(MANGAD_ID).mention}: I lack permission to delete messages in this channel.")
+
+	if message.channel.id == INTRODUCTIONS_CHANNEL_ID:
+		if await hasAlreadyIntroduced(message.author, message):
+			try:
+				await message.delete()
+				response = await message.channel.send(
+					f"{message.author.mention}, you've already introduced yourself. Edit your existing introduction or create a thread to reply.",
+					delete_after=15
+				)
+			except discord.Forbidden:
+				await message.channel.send(f"{client.get_user(MANGAD_ID).mention}: I lack permission to delete messages in the introductions channel.")
 
 	await client.process_commands(message)

@@ -1,33 +1,48 @@
-# Twitch
 import asyncio
-import urllib.request
-import json
+import aiohttp
+import logging
+from .common import *
 
-from . import common
-
-t_is_live = False
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 async def twitch():
-	global t_is_live
+	"""Check if a Twitch channel is live and send notifications to the specified Discord channel."""
 	t_channel = "hfstream"
-	t_url = "https://api.twitch.tv/kraken/streams/{0}?client_id={1}".format(t_channel, twitch_client_id)
+	twitch_url = f"https://api.twitch.tv/kraken/streams/{t_channel}"
+	headers = {"Client-ID": twitch_client_id, "Accept": "application/vnd.twitchtv.v5+json"}
+	t_is_live = False
+
 	while True:
 		try:
-			f = urllib.request.urlopen(t_url)
-			data = f.read().decode('utf-8')
-			f.close();
-		except IOError:
-			await asyncio.sleep(2*60)
-			continue
-		j_data = json.loads(data)
-		if j_data["stream"] is not None:
-			if not t_is_live:
-				msg = "**{0}** has just gone live! Watch their stream here: https://www.twitch.tv/{0}".format(t_channel)
-				await common.client.send_message(common.client.get_channel(common.pvp_id), msg) # id of pvp channel
-			t_is_live = True
-		else:
-			if t_is_live:
-				msg = "**{0}** is no longer live!  Sorry, you missed them this time.".format(t_channel)
-				await common.client.send_message(common.client.get_channel(common.pvp_id), msg)
-			t_is_live = False
-		await asyncio.sleep(2*60)
+			async with aiohttp.ClientSession() as session:
+				async with session.get(twitch_url, headers=headers) as response:
+					if response.status != 200:
+						log.warning(f"Twitch API returned status {response.status}. Retrying in 2 minutes.")
+						await asyncio.sleep(120)
+						continue
+
+					data = await response.json()
+
+					# Check live status and notify Discord
+					if data.get("stream") is not None:
+						if not t_is_live:
+							msg = f"**{t_channel}** has just gone live! Watch their stream here: https://www.twitch.tv/{t_channel}"
+							channel = client.get_channel(PVP_ID)
+							if channel:
+								await channel.send(msg)
+							log.info(f"Notified that {t_channel} is live.")
+						t_is_live = True
+					else:
+						if t_is_live:
+							msg = f"**{t_channel}** is no longer live! Sorry, you missed them this time."
+							channel = client.get_channel(PVP_ID)
+							if channel:
+								await channel.send(msg)
+							log.info(f"Notified that {t_channel} is no longer live.")
+						t_is_live = False
+
+		except aiohttp.ClientError as e:
+			log.error(f"Failed to fetch Twitch stream status: {e}")
+		
+		await asyncio.sleep(120)
