@@ -17,7 +17,8 @@ media_only_channels = [
 
 media_url_regexps = [
 	"((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?", # youtube
-	"https?:\/\/.*\/.*\.(png|gif|webp|jpeg|jpg)\??.*" # image
+	"https?:\/\/.*\/.*\.(png|gif|webp|jpeg|jpg)\??.*", # image
+	"https:\/\/(?:www\.)?deviantart.com\/.+" # deviantart
 ]
 
 def mentionsToNicks(msg):
