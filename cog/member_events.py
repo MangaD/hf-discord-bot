@@ -1,40 +1,47 @@
 from .common import *
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 @client.event
 async def on_member_remove(member: discord.Member):
-	"""Log when a member leaves or is kicked."""
-
-	if member.guild.id != HF_GUILD_ID:
-		return
-
+	"""Log when a member leaves, is kicked, or is banned."""
 	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
+	time_threshold = timedelta(seconds=5)  # Time window for detecting kicks/bans
+	now = datetime.now(timezone.utc)  # Use timezone-aware datetime
 
-	# Define a short time window for detecting recent kicks (e.g., 5 seconds)
-	time_threshold = timedelta(seconds=5)
-
-	# Get the current time in UTC
-	now = datetime.utcnow()
-
-	# Check if the member was kicked by fetching audit logs
-	async for entry in member.guild.audit_logs(action=discord.AuditLogAction.kick, limit=1):
+	# Check the audit logs for a recent ban or kick action
+	async for entry in member.guild.audit_logs(limit=5):
 		if entry.target.id == member.id and (now - entry.created_at) <= time_threshold:
-			embed = discord.Embed(
-				title="Member Kicked",
-				description=f"{member.mention} was kicked from the server.",
-				color=discord.Color.orange()
-			)
-			embed.set_thumbnail(url=member.display_avatar.url)
-			embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
-			embed.add_field(name="Joined At", value=member.joined_at.strftime("%Y-%m-%d %H:%M:%S"), inline=True)
-			embed.add_field(name="Kicked By", value=entry.user.mention, inline=True)
-			embed.add_field(name="Reason", value=entry.reason or "No reason provided", inline=False)
-			embed.set_footer(text="Kick Notification", icon_url=ICON_URL)
-			await notification_channel.send(embed=embed)
-			return  # Exit the function to avoid sending a "Member Left" message
+			if entry.action == discord.AuditLogAction.ban:
+				# Log as a ban
+				embed = discord.Embed(
+					title="Member Banned",
+					description=f"{member.mention} was banned from the server.",
+					color=discord.Color.red()
+				)
+				embed.set_thumbnail(url=member.display_avatar.url)
+				embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
+				embed.add_field(name="Banned By", value=entry.user.mention, inline=True)
+				embed.add_field(name="Reason", value=entry.reason or "No reason provided", inline=False)
+				embed.set_footer(text="Ban Notification", icon_url=ICON_URL)
+				await notification_channel.send(embed=embed)
+				return
+			elif entry.action == discord.AuditLogAction.kick:
+				# Log as a kick
+				embed = discord.Embed(
+					title="Member Kicked",
+					description=f"{member.mention} was kicked from the server.",
+					color=discord.Color.orange()
+				)
+				embed.set_thumbnail(url=member.display_avatar.url)
+				embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
+				embed.add_field(name="Kicked By", value=entry.user.mention, inline=True)
+				embed.add_field(name="Reason", value=entry.reason or "No reason provided", inline=False)
+				embed.set_footer(text="Kick Notification", icon_url=ICON_URL)
+				await notification_channel.send(embed=embed)
+				return
 
-	# If not kicked, log as a regular member leave
+	# If no ban or kick is found, log as a regular member leave
 	embed = discord.Embed(
 		title="Member Left",
 		description=f"{member.mention} has left the server.",
@@ -46,33 +53,6 @@ async def on_member_remove(member: discord.Member):
 	embed.set_footer(text="Goodbye!", icon_url=ICON_URL)
 
 	await notification_channel.send(embed=embed)
-
-
-@client.event
-async def on_member_ban(guild: discord.Guild, user: discord.User):
-	"""Log member ban events."""
-
-	if member.guild.id != HF_GUILD_ID:
-		return
-
-	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
-
-	# Fetch the audit log entry to identify who banned the user and the reason
-	async for entry in guild.audit_logs(action=discord.AuditLogAction.ban, limit=1):
-		if entry.target.id == user.id:
-			embed = discord.Embed(
-				title="Member Banned",
-				description=f"{user.mention} was banned from the server.",
-				color=discord.Color.red()
-			)
-			embed.set_thumbnail(url=user.display_avatar.url)
-			embed.add_field(name="Username", value=f"{user.name}#{user.discriminator}", inline=True)
-			embed.add_field(name="Joined At", value=member.joined_at.strftime("%Y-%m-%d %H:%M:%S"), inline=True)
-			embed.add_field(name="Banned By", value=entry.user.mention, inline=True)
-			embed.add_field(name="Reason", value=entry.reason or "No reason provided", inline=False)
-			embed.set_footer(text="Ban Notification", icon_url=ICON_URL)
-			await notification_channel.send(embed=embed)
-			break
 
 
 @client.event
