@@ -6,7 +6,7 @@
 
 ## Introduction
 
-A Discord bot for the Hero Fighter server. Created in July 8th, 2017. Receives occasional updates and new features.
+A Discord bot for the Hero Fighter server, created in July 8th, 2017. This bot provides a wide range of functionalities, including YouTube video playback, text-to-speech, translation, and more. It is built using Python 3.11+ and leverages the discord.py library for seamless integration with Discord.
 
 ### Set up
 
@@ -64,6 +64,7 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
 
 - Games
   - **ping:** Ping Pong!
+  - **tfs:** Play the 2-4-6 Task game.
 
 - Help
   - **help:** Shows the command list.
