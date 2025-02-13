@@ -23,19 +23,21 @@ def search_user(forum_url: str, keyword: str, max_display: int) -> str:
 	query = urllib.parse.quote(keyword)
 	url = f"{forum_url}/memberlist.php?sort=postnum&username_match=contains&username={query}"
 	response = requests.get(url, stream=True)
-	
-	pattern = re.compile(r'<a href="(.*?)">(?:<span.*?>)?(.*?)</a>')
+
+	pattern = re.compile(r'(?:(?:<td class="trow[12]">)|(?:<div class="plink text-center col-sm-12">)|(?:<h4 class="memberlistname">))<a href="(.*?)">(<span.*?>)?(.*)?</a>')
 	users = pattern.findall(response.text)
 	message = ""
-	
-	for i, (user_url, username) in enumerate(users):
+
+	for i, (user_url, garbage, username) in enumerate(users):
 		if i >= max_display:
 			message += f"\nFor more users, visit: <{url}>\n"
 			break
-		username = re.sub(r"</?strong>|</?span>", "", username)
+		username = re.sub(r"</?span>", "", username)
+		username = re.sub(r"</?strong>", "**", username)
+		username = re.sub(r"</?s>", "~~", username)
 		user_url = user_url.replace("&amp;", "&")
 		message += f"{username} - <{user_url}>\n"
-	
+
 	return message
 
 def chunks(s: str, n: int):
@@ -79,7 +81,7 @@ class HeroFighter(commands.Cog):
 		except IOError:
 			await ctx.channel.send("Failed to connect to the Hero Fighter server.")
 			return
-		
+
 		room_message = self.parse_room_list(data)
 		for chunk in chunks(encode_string_with_links(room_message), 2000):
 			await ctx.channel.send(chunk)
@@ -99,8 +101,7 @@ class HeroFighter(commands.Cog):
 			limit = room.getElementsByTagName("nl")[0].firstChild.nodeValue
 			players = room.getElementsByTagName("ppl")[0].firstChild.nodeValue if room.getElementsByTagName("ppl")[0].firstChild else ""
 
-			room_message += f"{i}. **{room_name}**\t{disconnects}\t{connections}\t{current}/{limit}\t{players}\n"
-		
+			room_message += f"{i}. **{room_name}**\t{disconnects}\t{connections}\t{current}/{limit}\t{players}\n"		
 		return room_message
 
 	@commands.command(description="Search for a user in the Hero Fighter and Little Fighter forums.")
