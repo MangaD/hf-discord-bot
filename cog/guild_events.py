@@ -3,6 +3,10 @@ from .common import *
 @client.event
 async def on_guild_channel_create(channel: discord.abc.GuildChannel):
 	"""Log channel creation events."""
+
+	if channel.guild.id != HF_GUILD_ID:
+		return
+
 	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
 
 	embed = discord.Embed(
@@ -19,6 +23,10 @@ async def on_guild_channel_create(channel: discord.abc.GuildChannel):
 @client.event
 async def on_guild_channel_update(before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
 	"""Log channel update events."""
+
+	if before.guild.id != HF_GUILD_ID:
+		return
+
 	# Debugging to see what triggers the event
 	#print(f"Channel update detected: {before.id} -> {after.id}")
 
@@ -59,6 +67,10 @@ async def on_guild_channel_update(before: discord.abc.GuildChannel, after: disco
 @client.event
 async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
 	"""Log channel deletion events."""
+
+	if channel.guild.id != HF_GUILD_ID:
+		return
+
 	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
 
 	embed = discord.Embed(

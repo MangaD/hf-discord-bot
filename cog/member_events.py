@@ -5,6 +5,10 @@ from datetime import datetime, timedelta, timezone
 @client.event
 async def on_member_remove(member: discord.Member):
 	"""Log when a member leaves, is kicked, or is banned."""
+
+	if member.guild.id != HF_GUILD_ID:
+		return  # Exit if the member is not joining the Hero Fighter guild
+
 	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
 	time_threshold = timedelta(seconds=5)  # Time window for detecting kicks/bans
 	now = datetime.now(timezone.utc)  # Use timezone-aware datetime
