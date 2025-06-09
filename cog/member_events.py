@@ -86,13 +86,13 @@ async def on_member_join(member):
 		await assign_role(member, "Bandit", "Muted member rejoined the server.")
 		return
 
-	# Greet the member in the English General channel
-	eng_general = client.get_channel(ENGLISH_GENERAL_ID)
+	# Greet the member in the 'welcome' channel
+	welcome_channel = client.get_channel(WELCOME_CHANNEL_ID)
 	intro_channel = client.get_channel(INTRODUCTIONS_CHANNEL_ID)
 	if await has_already_introduced(member):
-		await eng_general.send(f"Welcome back, {member.mention}!")
+		await welcome_channel.send(f"Welcome back, {member.mention}!")
 	else:
-		await eng_general.send(f"Hello {member.mention}! Please introduce yourself in {intro_channel.mention}. :wink:")
+		await welcome_channel.send(f"Hello {member.mention}! Please introduce yourself in {intro_channel.mention}. :wink:")
 
 	# Assign the "Chinese" role if the member’s name or nickname contains Chinese characters
 	if contains_chinese_characters(member.name) or (member.nick and contains_chinese_characters(member.nick)):

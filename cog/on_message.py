@@ -8,6 +8,7 @@ from .utils.FFmpegPCMAudioGTTS import FFmpegPCMAudioGTTS
 media_only_channels = [
 	MEDIA_CHANNEL_ID,
 	ARTWORK_CHANNEL_ID,
+	AI_ART_CHANNEL_ID,
 	HF_MEMES_CHANNEL_ID,
 	MEMES_CHANNEL_ID
 ]
