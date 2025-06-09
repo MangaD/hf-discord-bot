@@ -39,6 +39,9 @@ async def on_ready():
 		# twitch.twitch()	  # Notifies a channel when a Twitch stream goes live
 	)
 
+	# Initialize database on bot startup
+	MyGlobals.db.init_db()
+
 async def load_extensions():
 	for extension in STARTUP_EXTENSIONS:
 		try:
@@ -54,7 +57,7 @@ async def run_bot():
 if __name__ == "__main__":
 	if sys.version_info < (3, 11):
 		raise Exception("Python 3.11 or above is required.")
-	
+
 	try:
 		asyncio.run(run_bot())
 	except Exception as e:

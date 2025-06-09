@@ -58,6 +58,9 @@ async def on_member_remove(member: discord.Member):
 
 	await notification_channel.send(embed=embed)
 
+	# Do not remove the user from the database when he leaves, se we can restore his roles (e.g. Bandit)
+	#await MyGlobals.db.remove_user_from_db(member.id, member.guild.id)
+
 
 @client.event
 async def on_member_join(member):
@@ -81,10 +84,11 @@ async def on_member_join(member):
 
 	await notification_channel.send(embed=embed)
 
+	# Old code when using temporary memory to save the bandit role
 	# Assign the "Bandit" role if the user is in the muted users list
-	if member.id in MyGlobals.muted_user_ids:
-		await assign_role(member, "Bandit", "Muted member rejoined the server.")
-		return
+	#if member.id in MyGlobals.user_roles:
+	#	await assign_role(member, "Bandit", "Muted member rejoined the server.")
+	#	return
 
 	# Greet the member in the 'welcome' channel
 	welcome_channel = client.get_channel(WELCOME_CHANNEL_ID)
@@ -97,6 +101,19 @@ async def on_member_join(member):
 	# Assign the "Chinese" role if the member’s name or nickname contains Chinese characters
 	if contains_chinese_characters(member.name) or (member.nick and contains_chinese_characters(member.nick)):
 		await assign_role(member, "Chinese", "Member's name or nickname contains Chinese characters.")
+
+	try:
+		# Attempt to restore user if he exists in the database
+		if not await MyGlobals.db.restore_user_data(member):
+			# Add user to the database if he did not exist there
+			await MyGlobals.db.update_user_in_db(member.id, str(member), member.display_name, member.nick, member.guild.id, member.roles)
+	except discord.Forbidden:
+		await notification_channel(f"Missing permissions to edit roles/nickname for {member} in guild {member.guild.id}")
+	except sqlite3.Error as e:
+		await notification_channel(f"Database error for {member} in guild {member.guild.id}: {e}")
+	except discord.HTTPException as e:
+		await notification_channel(f"Discord API error for {member} in guild {member.guild.id}: {e}")
+
 
 async def assign_role(member, role_name, reason):
 	"""Assign a role to a member with error handling."""
@@ -164,6 +181,26 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 		embed.set_thumbnail(url=before.display_avatar.url)
 		await notification_channel.send(embed=embed)
 
+	# Check if roles or nickname changed
+	if before.roles != after.roles or before.nick != after.nick:
+
+		# Don't let bandit assign roles for himself
+		bandit_role = discord.utils.get(after.guild.roles, name="Bandit")
+
+		# If user still has bandit role, then remove any roles he just added
+		if bandit_role in after.roles and await MyGlobals.db.has_role(after.id, after.guild.id, "Bandit"):
+			try:
+				await after.edit(roles=[bandit_role], reason="Bandit is not allowed to change roles")
+				#print(f"Attempted to change roles: {before.roles} --- {after.roles}")
+			except discord.Forbidden:
+				print(f"Missing permissions to edit roles for {after} in guild {guild.id}")
+				return
+			except discord.HTTPException as e:
+				print(f"Discord API error for {after} in guild {guild.id}: {e}")
+				return
+		else:
+			await MyGlobals.db.update_user_in_db(after.id, str(after), after.display_name, after.nick, after.guild.id, after.roles)
+
 	# Print a summary to the console
 	log_message = (
 		f"Member Update - {before.name}#{before.discriminator}\n"
@@ -173,3 +210,12 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 	)
 	# Uncomment to log in the console if needed
 	# print(log_message)
+
+
+@client.event
+async def on_user_update(before: discord.Member, after: discord.Member):
+	if before.bot:
+		return
+	if before.name != after.name or before.discriminator != after.discriminator or before.global_name != after.global_name:
+		await MyGlobals.db.update_user_global_name(after.id, str(after), after.display_name)
+

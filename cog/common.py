@@ -5,6 +5,8 @@ from discord.ext import commands
 import re  # Wrap links in < > brackets
 import asyncio
 
+from .Database import *
+
 # Bot settings and configuration
 BOT_PREFIX = "."
 DESCRIPTION = (
@@ -55,9 +57,9 @@ class MyGlobals:
 	voice_client = None
 	audio_player = None
 	language = "en"
-	muted_user_ids = []
 	# Dictionary to store user roles
-	user_roles = {}
+	#user_roles = {}
+	db = Database(client)
 
 # Compile URL regex once globally
 URL_REGEX = re.compile(r"((http://|https://)[^ <>'\"{}|\\^`\[\]]*)")
