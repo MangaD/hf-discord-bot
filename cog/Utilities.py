@@ -223,6 +223,13 @@ def format_definitions(result, definitions, max_definitions=2):
 			result += f'\n\n**{part.capitalize()}**: {formatted_defs}'
 	return result.strip(' .,')
 
+# Conversion constants
+KG_TO_LBS = 2.20462
+INCH_TO_CM = 2.54
+FT_TO_INCH = 12
+MILE_TO_M = 1609.344
+YARD_TO_M = 0.9144
+
 # Discord integration
 class Utilities(commands.Cog):
 	"""Useful commands for everyday life."""
@@ -387,12 +394,12 @@ class Utilities(commands.Cog):
 			response.raise_for_status()
 			soup = BeautifulSoup(response.content, "html.parser")
 			meaning = soup.find("div", attrs={"class": "meaning"})
-			
+
 			if meaning:
 				meaning_text = meaning.get_text().replace("&apos", "'")
 				if any(bad_word in meaning_text.lower() for bad_word in config.bad_words):
 					meaning_text = "*- nsfw -*"
-				
+
 				if len(meaning_text) > 300:
 					meaning_text = meaning_text[:295] + '[...]'
 				await ctx.send(f"**{ctx.author.name}:** {meaning_text}")
@@ -415,7 +422,7 @@ class Utilities(commands.Cog):
 			if not definitions:
 				await ctx.send(f"**{ctx.author.name}:** Couldn't find any definitions for '{word}'.")
 				return
-			
+
 			result = format_definitions(f"**__{word}__**", definitions)
 			if len(result) > 300:
 				result = result[:295] + '[...]'
@@ -501,22 +508,22 @@ class Utilities(commands.Cog):
 		tokens = phrase.split()
 		in_lang = 'auto'
 		out_lang = 'en'
-		
+
 		if tokens[0].startswith(":"):
 			in_lang = tokens.pop(0)[1:]
 			if tokens and tokens[0].startswith(":"):
 				out_lang = tokens.pop(0)[1:]
 		phrase_text = " ".join(tokens)
-		
+
 		return in_lang, out_lang, phrase_text
 
 	@commands.command(description='Repeatedly translates the input until it becomes nonsensical. Usage: `.mangle <phrase>`')
 	async def mangle(self, ctx, *, phrase: str = None):
 		"""Repeatedly translates the input to multiple languages until it loses meaning."""
-		
+
 		long_lang_list = ['fr', 'de', 'es', 'it', 'no', 'he', 'la', 'ja', 'cy', 'ar', 'yi', 'zh', 'nl', 'ru', 'fi', 'hi', 'af', 'jw', 'mr', 'ceb', 'cs', 'ga', 'sv', 'eo', 'el', 'ms', 'lv']
 		lang_sequence = random.sample(long_lang_list, 8)
-		
+
 		if not phrase:
 			phrase = MyGlobals.last_message or ""
 			if not phrase:
@@ -533,7 +540,7 @@ class Utilities(commands.Cog):
 			except Exception as e:
 				await ctx.channel.send(f"Error during mangling: {e}")
 				return
-		
+
 		await ctx.channel.send(f"**{ctx.author.name}:** {mangled_text}")
 
 	@commands.command(description='Get the time in a specific timezone. Usage: `.time Asia/Hong_Kong`')
@@ -552,26 +559,258 @@ class Utilities(commands.Cog):
 				f"**{ctx.author.name}**: Unrecognized timezone. Check valid timezones here: <https://gist.github.com/heyalexej/8bf688fd67d7199be4a1682b3eec7568>"
 			)
 
+	# -------------------------
+	# Helper parsing utilities
+	# -------------------------
+	def _parse_number_and_unit(self, s: str):
+		"""
+		Try to find a number and unit in the string.
+		Returns (value: float, unit: str) or (None, None) if not found.
+		Recognizes common unit synonyms (kg, kilogram, lb, lbs, cm, m, mm, in, inch, ft, ' ,etc).
+		"""
+		s = s.strip()
+		# first try explicit number+unit combos: "180cm", "130 lbs", "1.8 m"
+		match = re.search(r"([+-]?\d+(?:\.\d+)?)\s*([a-zA-Z'\"°]+)", s)
+		if match:
+			num = float(match.group(1))
+			unit_raw = match.group(2).lower()
+			# normalize common unit aliases
+			unit_map = {
+				# weight
+				"kg": "kg", "kgs": "kg", "kilogram": "kg", "kilograms": "kg",
+				"lb": "lb", "lbs": "lb", "pound": "lb", "pounds": "lb",
+				# length
+				"cm": "cm", "centimeter": "cm", "centimeters": "cm",
+				"mm": "mm", "millimeter": "mm", "millimetres": "mm",
+				"m": "m", "meter": "m", "metre": "m", "meters": "m",
+				"km": "km", "kilometer": "km", "kilometre": "km", "kilometers": "km",
+				"in": "in", "inch": "in", "inches": "in", "\"": "in",
+				"ft": "ft", "foot": "ft", "feet": "ft", "'": "ft",
+				"yd": "yd", "yard": "yd", "yards": "yd",
+				"mi": "mi", "mile": "mi", "miles": "mi"
+			}
+			# try exact or strip trailing punctuation
+			unit_clean = unit_raw.strip().lower().rstrip(".,")
+			unit = unit_map.get(unit_clean)
+			if unit:
+				return num, unit
+		return None, None
+
+	def _to_feet_inches(self, total_inches: float):
+		"""Return (feet:int, inches:float) given total inches."""
+		feet = int(total_inches // FT_TO_INCH)
+		inches = total_inches - (feet * FT_TO_INCH)
+		return feet, inches
+
 	@commands.command(description='Converts kg to lbs and vice-versa. Usage: `.weight 60kg` or `.weight 130lbs`')
 	async def weight(self, ctx, *, weight_str: str = None):
-		"""Converts kg to lbs and vice-versa."""
+		"""
+		Converts kg <-> lb.
+		@param weight_str [in] the user input containing a number and unit, e.g. "60kg" or "130lbs"
+		"""
 		if not weight_str:
-			await ctx.channel.send(f"**{ctx.author.name}:** Please specify a weight.")
+			await ctx.channel.send(f"**{ctx.author.name}:** Please specify a weight. Usage: `.weight 60kg` or `.weight 130lbs`.")
 			return
 
-		kg_match = re.search(r"(\d+\.?\d*) *[Kk][Gg]", weight_str)
-		lbs_match = re.search(r"(\d+\.?\d*) *[Ll][Bb][Ss]", weight_str)
+		# try to parse straightforward number+unit
+		val, unit = self._parse_number_and_unit(weight_str)
+		# fallback: sometimes users write "130 lb" or "130lbs" matched above but be safe
+		if val is None:
+			# explicit regex for kg or lbs spelled out
+			kg_match = re.search(r"([+-]?\d+(?:\.\d+)?)\s*(?:kg|kilogram|kilograms)\b", weight_str, re.I)
+			lb_match = re.search(r"([+-]?\d+(?:\.\d+)?)\s*(?:lbs|lb|pound|pounds)\b", weight_str, re.I)
+			if kg_match:
+				val = float(kg_match.group(1)); unit = "kg"
+			elif lb_match:
+				val = float(lb_match.group(1)); unit = "lb"
 
-		if kg_match:
-			kg = float(kg_match.group(1))
-			lbs = round(kg * 2.20462, 2)
-			await ctx.channel.send(f"**{ctx.author.name}**: {lbs} lbs")
-		elif lbs_match:
-			lbs = float(lbs_match.group(1))
-			kg = round(lbs / 2.20462, 2)
-			await ctx.channel.send(f"**{ctx.author.name}**: {kg} kg")
-		else:
+		if val is None or unit is None:
 			await ctx.channel.send(f"**{ctx.author.name}:** Invalid format. Usage: `.weight 60kg` or `.weight 130lbs`.")
+			return
+
+		if unit == "kg":
+			lbs = round(val * KG_TO_LBS, 2)
+			await ctx.channel.send(f"**{ctx.author.name}**: {val} kg = {lbs} lbs")
+		elif unit == "lb":
+			kg = round(val / KG_TO_LBS, 2)
+			await ctx.channel.send(f"**{ctx.author.name}**: {val} lbs = {kg} kg")
+		else:
+			await ctx.channel.send(f"**{ctx.author.name}:** Unsupported unit for weight. Use kg or lbs.")
+
+
+	@commands.command(description='Converts heights. Usage: `.height 180cm`, `.height 5\'10"` or `.height 5ft10in`')
+	async def height(self, ctx, *, height_str: str = None):
+		"""
+		Converts human heights between metric and imperial.
+		Supports formats:
+		  - 180cm, 180 cm
+		  - 1.80m, 1.8 m
+		  - 5'10" (also 5'10 or 5' 10")
+		  - 5ft10in, 5 ft 10 in
+		Responds with both cm (rounded to nearest integer) and ft'in" form.
+		@param height_str [in] user input string
+		"""
+		if not height_str:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please provide a height (e.g. `.height 180cm` or `.height 5'10\").`)")
+			return
+
+		s = height_str.strip()
+
+		# 1) Try feet'inches patterns first: 5'10", 5'10, 5 ft 10 in, 5ft10in
+		ft_in_match = re.search(r"^\s*(\d+)\s*(?:'|ft|feet)\s*[\s,]*\s*(\d+(?:\.\d+)?)\s*(?:\"|in|inches)?\s*$", s, re.I)
+		if ft_in_match:
+			feet = int(ft_in_match.group(1))
+			inches = float(ft_in_match.group(2))
+			total_inches = feet * FT_TO_INCH + inches
+			cm = round(total_inches * INCH_TO_CM)
+			feet_out, inches_out = self._to_feet_inches(total_inches)
+			inches_out = round(inches_out, 1)  # one decimal for nicer display
+			await ctx.channel.send(f"**{ctx.author.name}**: {cm} cm — {feet_out}\'{inches_out}\"")
+			return
+
+		# also accept a compact format like 5'10" with optional "
+		compact = re.search(r"^\s*(\d+)'\s*(\d+(?:\.\d+)?)\s*(?:\"|$)", s)
+		if compact:
+			feet = int(compact.group(1))
+			inches = float(compact.group(2))
+			total_inches = feet * FT_TO_INCH + inches
+			cm = round(total_inches * INCH_TO_CM)
+			feet_out, inches_out = self._to_feet_inches(total_inches)
+			inches_out = round(inches_out, 1)
+			await ctx.channel.send(f"**{ctx.author.name}**: {cm} cm — {feet_out}\'{inches_out}\"")
+			return
+
+		# 2) Try metric forms: cm, m
+		val, unit = self._parse_number_and_unit(s)
+		if val is not None and unit in ("cm", "m", "mm"):
+			# normalize to cm
+			if unit == "mm":
+				cm = round(val / 10)
+			elif unit == "m":
+				cm = round(val * 100)
+			else:
+				cm = round(val)
+			total_inches = cm / INCH_TO_CM
+			feet_out, inches_out = self._to_feet_inches(total_inches)
+			inches_out = round(inches_out, 1)
+			await ctx.channel.send(f"**{ctx.author.name}**: {cm} cm — {feet_out}\'{inches_out}\"")
+			return
+
+		# 3) Maybe user typed something like "70in" or "70 inches" -> convert to cm and ft'in
+		if val is not None and unit == "in":
+			total_inches = val
+			cm = round(total_inches * INCH_TO_CM)
+			feet_out, inches_out = self._to_feet_inches(total_inches)
+			inches_out = round(inches_out, 1)
+			await ctx.channel.send(f"**{ctx.author.name}**: {cm} cm — {feet_out}\'{inches_out}\"")
+			return
+
+		# fallback
+		await ctx.channel.send(f"**{ctx.author.name}:** Invalid height format. Examples: `.height 180cm`, `.height 1.80m`, `.height 5\'10\"`, `.height 5ft10in`.")
+
+	@commands.command(description='General length converter. Usage: `.length 12cm` or `.length 3km to mi`')
+	async def length(self, ctx, *, length_str: str = None):
+		"""
+		General-purpose length conversions between: mm, cm, m, km, in, ft, yd, mi.
+		Usage examples:
+		  .length 12cm
+		  .length 3km to mi
+		  .length 10in to cm
+		@param length_str [in] user input string, optionally containing "to <unit>"
+		"""
+		if not length_str:
+			await ctx.channel.send(f"**{ctx.author.name}:** Please provide a length (e.g. `.length 12cm` or `.length 3km to mi`).")
+			return
+
+		s = length_str.strip()
+
+		# support explicit "to" for target unit: "3km to mi" or "10in -> cm"
+		to_match = re.search(r"^(.*?)\s+(?:to|->|=>)\s+([a-zA-Z\"']+)\s*$", s, re.I)
+		target_unit = None
+		if to_match:
+			src_part = to_match.group(1).strip()
+			target_unit_raw = to_match.group(2).strip().lower().rstrip(".,")
+			# mapping for target unit
+			unit_aliases = {
+				"mm": "mm", "millimeter": "mm", "millimeters": "mm",
+				"cm": "cm", "centimeter": "cm", "centimeters": "cm",
+				"m": "m", "meter": "m", "metre": "m",
+				"km": "km", "kilometer": "km", "kilometre": "km",
+				"in": "in", "inch": "in", "inches": "in", "\"": "in",
+				"ft": "ft", "foot": "ft", "feet": "ft", "'": "ft",
+				"yd": "yd", "yard": "yd",
+				"mi": "mi", "mile": "mi"
+			}
+			target_unit = unit_aliases.get(target_unit_raw)
+			parse_source = src_part
+		else:
+			parse_source = s
+
+		val, unit = self._parse_number_and_unit(parse_source)
+		if val is None or unit is None:
+			await ctx.channel.send(f"**{ctx.author.name}:** Invalid format. Usage: `.length 12cm` or `.length 3km to mi`.")
+			return
+
+		# convert everything to meters as intermediate
+		meters = None
+		if unit == "mm":
+			meters = val / 1000.0
+		elif unit == "cm":
+			meters = val / 100.0
+		elif unit == "m":
+			meters = val
+		elif unit == "km":
+			meters = val * 1000.0
+		elif unit == "in":
+			meters = val * INCH_TO_CM / 100.0
+		elif unit == "ft":
+			meters = (val * FT_TO_INCH) * INCH_TO_CM / 100.0
+		elif unit == "yd":
+			meters = val * YARD_TO_M
+		elif unit == "mi":
+			meters = val * MILE_TO_M
+		else:
+			await ctx.channel.send(f"**{ctx.author.name}:** Unsupported unit.")
+			return
+
+		# If target unit specified, produce just that conversion
+		if target_unit:
+			if target_unit == unit:
+				await ctx.channel.send(f"**{ctx.author.name}**: {val} {unit} = {val} {unit} (same unit)")
+				return
+			# convert meters -> target
+			if target_unit == "mm":
+				out = round(meters * 1000.0, 2)
+			elif target_unit == "cm":
+				out = round(meters * 100.0, 2)
+			elif target_unit == "m":
+				out = round(meters, 3)
+			elif target_unit == "km":
+				out = round(meters / 1000.0, 4)
+			elif target_unit == "in":
+				out = round(meters * 100.0 / INCH_TO_CM, 2)
+			elif target_unit == "ft":
+				out = round((meters * 100.0 / INCH_TO_CM) / FT_TO_INCH, 2)
+			elif target_unit == "yd":
+				out = round(meters / YARD_TO_M, 3)
+			elif target_unit == "mi":
+				out = round(meters / MILE_TO_M, 6)
+			else:
+				await ctx.channel.send(f"**{ctx.author.name}:** Unsupported target unit.")
+				return
+			await ctx.channel.send(f"**{ctx.author.name}**: {val} {unit} = {out} {target_unit}")
+			return
+
+		# If no target specified, provide a compact set of useful equivalents
+		cm_val = round(meters * 100.0, 2)
+		m_val = round(meters, 3)
+		in_val = round(meters * 100.0 / INCH_TO_CM, 2)
+		ft_val = round(in_val / FT_TO_INCH, 2)
+		mi_val = round(meters / MILE_TO_M, 6)
+
+		await ctx.channel.send(
+			f"**{ctx.author.name}**: {val} {unit} ≈ {cm_val} cm ≈ {m_val} m ≈ {in_val} in ≈ {ft_val} ft ≈ {mi_val} mi"
+		)
 
 	@commands.command(description='Interact with OpenAI. Usage: `.ai What is Hero Fighter?`', enabled=False, hidden=True)
 	async def ai(self, ctx, *, phrase: str = None):

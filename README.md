@@ -91,6 +91,9 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **tr:** Translates a phrase, with an optional language hint.
   - **tts:** Text to speech with optional language hint.
   - **time:** Returns the date & time for a given timezone.
+  - **weight:** Converts kg to lbs and vice-versa.
+  - **height:** Converts heights.
+  - **length:** General length converter.
   - **ai:** Interacts with OpenAI.
   - **ai_img:** Asks OpenAI to generate images given a description.
 
