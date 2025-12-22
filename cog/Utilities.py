@@ -18,6 +18,10 @@ import yt_dlp
 import discord
 from .common import *
 import config
+import time
+from typing import Dict, Optional, Tuple
+import aiohttp
+from discord.ext import commands
 
 # Add the parent directory to sys.path for module access
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -229,6 +233,10 @@ INCH_TO_CM = 2.54
 FT_TO_INCH = 12
 MILE_TO_M = 1609.344
 YARD_TO_M = 0.9144
+FRANKFURTER_BASE_URL = "https://api.frankfurter.dev/v1"
+RATES_TTL_SECONDS = 15 * 60  # 15 minutes
+CURRENCIES_TTL_SECONDS = 24 * 60 * 60  # 24 hours
+DEFAULT_TARGET_CCY = "EUR"
 
 # Discord integration
 class Utilities(commands.Cog):
@@ -236,6 +244,39 @@ class Utilities(commands.Cog):
 
 	def __init__(self, client):
 		self.client = client
+
+		# aiohttp session for fx commands (created lazily)
+		self._session: Optional[aiohttp.ClientSession] = None
+
+		# cache: base -> (timestamp, rates_dict, date_str)
+		self._rates_cache: Dict[str, Tuple[float, Dict[str, float], str]] = {}
+
+		# cache: (timestamp, currencies_dict)
+		self._currencies_cache: Optional[Tuple[float, Dict[str, str]]] = None
+
+		self._lock = asyncio.Lock()
+
+	# discord.py 2.x: called when cog is loaded (if using extensions/setup)
+	async def cog_load(self):
+		if self._session is None or self._session.closed:
+			self._session = aiohttp.ClientSession()
+
+	# called when cog is unloaded
+	def cog_unload(self):
+		if self._session and not self._session.closed:
+			asyncio.create_task(self._session.close())
+
+	async def _get_session(self) -> aiohttp.ClientSession:
+		if self._session is None or self._session.closed:
+			self._session = aiohttp.ClientSession()
+		return self._session
+
+	async def _fetch_json(self, url: str) -> dict:
+		session = await self._get_session()
+		async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+			resp.raise_for_status()
+			return await resp.json()
+
 
 	@commands.command(name='8', description='Ask the magic 8-ball a question! Usage: `.8 <question>`')
 	async def ball(self, ctx):
@@ -811,6 +852,157 @@ class Utilities(commands.Cog):
 		await ctx.channel.send(
 			f"**{ctx.author.name}**: {val} {unit} ≈ {cm_val} cm ≈ {m_val} m ≈ {in_val} in ≈ {ft_val} ft ≈ {mi_val} mi"
 		)
+
+
+	# =========================
+	# Currency: .fx and .fxlist
+	# =========================
+	def _parse_fx(self, s: str) -> Optional[Tuple[float, str, str]]:
+		"""
+		Parse:
+		  "10 usd to eur"
+		  "10usd eur"
+		  "10.5 EUR -> JPY"
+		  "2500 jpy" (defaults target to DEFAULT_TARGET_CCY)
+		Returns (amount, from_ccy, to_ccy)
+		"""
+		s = s.strip()
+		s = re.sub(r"\s*(->|=>)\s*", " to ", s, flags=re.I)
+
+		m = re.match(r"^\s*([+-]?\d+(?:\.\d+)?)\s*([A-Za-z]{3})\s*(?:to\s*([A-Za-z]{3}))?\s*$", s, re.I)
+		if m:
+			amount = float(m.group(1))
+			from_ccy = m.group(2).upper()
+			to_ccy = (m.group(3) or DEFAULT_TARGET_CCY).upper()
+			return amount, from_ccy, to_ccy
+
+		m2 = re.match(r"^\s*([+-]?\d+(?:\.\d+)?)\s*([A-Za-z]{3})\s+([A-Za-z]{3})\s*$", s, re.I)
+		if m2:
+			amount = float(m2.group(1))
+			from_ccy = m2.group(2).upper()
+			to_ccy = m2.group(3).upper()
+			return amount, from_ccy, to_ccy
+
+		return None
+
+	async def _get_supported_currencies(self) -> Dict[str, str]:
+		now = time.time()
+		if self._currencies_cache and (now - self._currencies_cache[0]) < CURRENCIES_TTL_SECONDS:
+			return self._currencies_cache[1]
+
+		async with self._lock:
+			now = time.time()
+			if self._currencies_cache and (now - self._currencies_cache[0]) < CURRENCIES_TTL_SECONDS:
+				return self._currencies_cache[1]
+
+			data = await self._fetch_json(f"{FRANKFURTER_BASE_URL}/currencies")
+			currencies = {k.upper(): v for k, v in data.items()}
+			self._currencies_cache = (time.time(), currencies)
+			return currencies
+
+	async def _get_latest_rates_for_base(self, base: str) -> Tuple[Dict[str, float], str]:
+		base = base.upper()
+		now = time.time()
+
+		cached = self._rates_cache.get(base)
+		if cached and (now - cached[0]) < RATES_TTL_SECONDS:
+			return cached[1], cached[2]
+
+		async with self._lock:
+			now = time.time()
+			cached = self._rates_cache.get(base)
+			if cached and (now - cached[0]) < RATES_TTL_SECONDS:
+				return cached[1], cached[2]
+
+			data = await self._fetch_json(f"{FRANKFURTER_BASE_URL}/latest?base={base}")
+			rates = {k.upper(): float(v) for k, v in data.get("rates", {}).items()}
+			date_str = str(data.get("date", ""))
+			self._rates_cache[base] = (time.time(), rates, date_str)
+			return rates, date_str
+
+	@commands.command(name="fx", description="Currency converter. Usage: `.fx 10 usd to eur` or `.fx 100 jpy`")
+	async def fx(self, ctx, *, query: str = None):
+		if not query:
+			await ctx.channel.send(f"**{ctx.author.name}:** Usage: `.fx 10 usd to eur` (also `.fx 10usd eur`).")
+			return
+
+		parsed = self._parse_fx(query)
+		if not parsed:
+			await ctx.channel.send(f"**{ctx.author.name}:** Invalid format. Examples: `.fx 10 usd to eur`, `.fx 10usd eur`, `.fx 100 jpy`.")
+			return
+
+		amount, from_ccy, to_ccy = parsed
+		if amount < 0:
+			await ctx.channel.send(f"**{ctx.author.name}:** Amount must be non-negative.")
+			return
+
+		# Validate currency codes (cached)
+		try:
+			supported = await self._get_supported_currencies()
+			if from_ccy not in supported:
+				await ctx.channel.send(f"**{ctx.author.name}:** Unknown currency code: `{from_ccy}`.")
+				return
+			if to_ccy not in supported:
+				await ctx.channel.send(f"**{ctx.author.name}:** Unknown currency code: `{to_ccy}`.")
+				return
+		except Exception:
+			# If currencies endpoint is down, we can still try conversion.
+			supported = {}
+
+		try:
+			rates, date_str = await self._get_latest_rates_for_base(from_ccy)
+		except aiohttp.ClientResponseError as e:
+			await ctx.channel.send(f"**{ctx.author.name}:** Rate lookup failed (HTTP {e.status}). Try again later.")
+			return
+		except Exception:
+			await ctx.channel.send(f"**{ctx.author.name}:** Rate lookup failed. Try again later.")
+			return
+
+		if from_ccy == to_ccy:
+			await ctx.channel.send(f"**{ctx.author.name}**: {amount:,.2f} {from_ccy} = {amount:,.2f} {to_ccy}")
+			return
+
+		rate = rates.get(to_ccy)
+		if rate is None:
+			await ctx.channel.send(f"**{ctx.author.name}:** No rate available for `{from_ccy} -> {to_ccy}`.")
+			return
+
+		converted = amount * rate
+		rate_str = f"{rate:,.6f}".rstrip("0").rstrip(".")
+
+		await ctx.channel.send(
+			f"**{ctx.author.name}**: {amount:,.2f} {from_ccy} = {converted:,.2f} {to_ccy} "
+			f"(rate {rate_str}, date {date_str or 'latest'})"
+		)
+
+	@commands.command(name="fxlist", description="List supported currency codes. Usage: `.fxlist`")
+	async def fxlist(self, ctx):
+		try:
+			currencies = await self._get_supported_currencies()
+		except Exception:
+			await ctx.channel.send(f"**{ctx.author.name}:** Failed to fetch currency codes.")
+			return
+
+		codes = sorted(currencies.keys())
+		text = ", ".join(codes)
+
+		# Split into multiple messages if needed (Discord message limit safety)
+		if len(text) <= 1800:
+			await ctx.channel.send(f"**Supported currencies ({len(codes)}):** {text}")
+			return
+
+		prefix = f"**Supported currencies ({len(codes)}):** "
+		chunk = ""
+		for code in codes:
+			piece = (", " if chunk else "") + code
+			if len(prefix) + len(chunk) + len(piece) > 1800:
+				await ctx.channel.send(prefix + chunk)
+				chunk = code
+			else:
+				chunk += piece
+		if chunk:
+			await ctx.channel.send(prefix + chunk)
+
 
 	@commands.command(description='Interact with OpenAI. Usage: `.ai What is Hero Fighter?`', enabled=False, hidden=True)
 	async def ai(self, ctx, *, phrase: str = None):
