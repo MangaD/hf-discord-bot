@@ -94,6 +94,7 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **weight:** Converts kg to lbs and vice-versa.
   - **height:** Converts heights.
   - **length:** General length converter.
+  - **temp:** Converts temperatures (°C, °F, K).
   - **fx:** Currency converter using up-to-date reference rates (e.g. `.fx 10 usd to eur`).
   - **fxlist:** Lists all supported currency codes.
   - **ai:** Interacts with OpenAI.

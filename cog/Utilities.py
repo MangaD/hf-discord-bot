@@ -855,6 +855,62 @@ class Utilities(commands.Cog):
 
 
 	# =========================
+	# .temp
+	# =========================
+	@commands.command(description="Converts temperatures. Usage: `.temp 25C`, `.temp 77F`, `.temp 300K`")
+	async def temp(self, ctx, *, temp_str: str = None):
+		if not temp_str:
+			await ctx.channel.send(
+				f"**{ctx.author.name}:** Please provide a temperature (e.g. `.temp 25C`, `.temp 77F`, `.temp 300K`)."
+			)
+			return
+
+		s = temp_str.strip()
+
+		# Match number + unit (C/F/K, optional degree symbol)
+		match = re.match(
+			r"^\s*([+-]?\d+(?:\.\d+)?)\s*°?\s*([cCfFkK])\s*$",
+			s,
+		)
+
+		if not match:
+			await ctx.channel.send(
+				f"**{ctx.author.name}:** Invalid format. Examples: `.temp 25C`, `.temp 77F`, `.temp 300K`."
+			)
+			return
+
+		value = float(match.group(1))
+		unit = match.group(2).upper()
+
+		# Convert input to Celsius first
+		if unit == "C":
+			c = value
+		elif unit == "F":
+			c = (value - 32) * 5 / 9
+		elif unit == "K":
+			if value < 0:
+				await ctx.channel.send(f"**{ctx.author.name}:** Kelvin cannot be negative.")
+				return
+			c = value - 273.15
+		else:
+			await ctx.channel.send(f"**{ctx.author.name}:** Unsupported temperature unit.")
+			return
+
+		f = (c * 9 / 5) + 32
+		k = c + 273.15
+
+		# Formatting
+		c_str = f"{c:.2f}".rstrip("0").rstrip(".")
+		f_str = f"{f:.2f}".rstrip("0").rstrip(".")
+		k_str = f"{k:.2f}".rstrip("0").rstrip(".")
+
+		await ctx.channel.send(
+			f"**{ctx.author.name}**: {c_str} °C — {f_str} °F — {k_str} K"
+		)
+
+
+
+	# =========================
 	# Currency: .fx and .fxlist
 	# =========================
 	def _parse_fx(self, s: str) -> Optional[Tuple[float, str, str]]:
