@@ -6,3 +6,4 @@ yt-dlp
 beautifulsoup4
 pytz # Timezone
 openai # ChatGPT
+wikipedia

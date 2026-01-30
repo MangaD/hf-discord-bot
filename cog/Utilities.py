@@ -16,12 +16,14 @@ import openai
 import pytz
 import yt_dlp
 import discord
+from discord.ext import commands
 from .common import *
 import config
 import time
 from typing import Dict, Optional, Tuple
 import aiohttp
-from discord.ext import commands
+import wikipedia
+import wikipedia.exceptions
 
 # Add the parent directory to sys.path for module access
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -471,52 +473,56 @@ class Utilities(commands.Cog):
 		except Exception as e:
 			await ctx.send(f"Error fetching Wiktionary entry: {e}")
 
-	@commands.command(description='Look up something on Wikipedia. Usage: `.w <phrase>`')
-	async def w(self, ctx, *, phrase: str = None):
-		"""Look up something on Wikipedia."""
+	@commands.command(name="wiki", aliases=["w"], description="Search Wikipedia for a topic. Usage: `.wiki <topic>` or `.wiki :lang <topic>`")
+	async def wiki(self, ctx, *, query: str = None):
+		"""Search Wikipedia for a topic, with optional language hint (e.g., :de, :ja, :pt)."""
+		if not query:
+			return await ctx.send(f"**{ctx.author.name}**: You must provide a search query.")
 
-		if not phrase or len(phrase.strip()) == 0:
-			await ctx.channel.send(f"**{ctx.author.name}:** Please provide a phrase to look up.")
-			return
-		if len(phrase) > 2000:
-			await ctx.channel.send(f"**{ctx.author.name}:** Phrase must be under 2000 characters.")
-			return
+		# Optional language hint, e.g., ":de topic"
+		lang = "en"
+		if query.startswith(":"):
+			parts = query.split(" ", 1)
+			if len(parts) == 2:
+				lang_hint = parts[0][1:]
+				if len(lang_hint) == 2:
+					lang = lang_hint
+					query = parts[1]
+		wikipedia.set_lang(lang)
 
-		# Determine language and server
-		lang = 'en'
-		tokens = phrase.split()
-		if tokens[0].startswith(":"):
-			lang = tokens.pop(0)[1:]
-			phrase = " ".join(tokens)
-
-		server = f'{lang}.wikipedia.org'
-		search_url = f'https://{server}/w/api.php?format=json&action=query&list=search&srlimit=1&srprop=timestamp&srwhat=text&srsearch={urllib.parse.quote(phrase)}'
-
-		# Perform search query
 		try:
-			search_response = requests.get(search_url).json()
-			search_results = search_response.get("query", {}).get("search", [])
-			if not search_results:
-				await ctx.channel.send(f"**{ctx.author.name}:** No results found for '{phrase}'.")
-				return
-			page_title = search_results[0]["title"]
-		except (requests.RequestException, KeyError) as e:
-			await ctx.channel.send(f"**{ctx.author.name}:** Error fetching search results: {e}")
-			return
+			# Attempt to fetch article and summary
+			page = wikipedia.page(query, auto_suggest=True)
+			summary = wikipedia.summary(query, sentences=5, auto_suggest=True)
+		except wikipedia.DisambiguationError as e:
+			return await ctx.send(f"**{ctx.author.name}**: That query is ambiguous. Try one of these:\n{', '.join(e.options[:5])}")
+		except wikipedia.PageError:
+			return await ctx.send(f"**{ctx.author.name}**: Could not find a page for '{query}'.")
+		except Exception as e:
+			return await ctx.send(f"**{ctx.author.name}**: An error occurred: {str(e)}")
 
-		# Fetch snippet
-		snippet_url = f'https://{server}/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&exchars=300&redirects&titles={urllib.parse.quote(page_title)}'
-		try:
-			snippet_response = requests.get(snippet_url).json()
-			page_data = next(iter(snippet_response["query"]["pages"].values()))
-			snippet = page_data.get("extract", "No extract available.")
-		except (requests.RequestException, KeyError) as e:
-			await ctx.channel.send(f"**{ctx.author.name}:** Error fetching snippet for '{page_title}': {e}")
-			return
+		# Build embed
+		embed = discord.Embed(
+			title=page.title,
+			url=page.url,
+			description=summary[:2048],  # Embed description limit
+			color=discord.Color.blue()
+		)
+		embed.set_footer(text=f"Wikipedia ({lang.upper()})", icon_url="https://upload.wikimedia.org/wikipedia/commons/6/63/Wikipedia-logo.png")
 
-		# Format and send message
-		page_url = f'https://{server}/wiki/{urllib.parse.quote(page_title)}'
-		await ctx.channel.send(f'[WIKIPEDIA] {page_title} | "{snippet}" | <{page_url}>')
+		# Try to attach the article thumbnail if available
+		if hasattr(page, "images"):
+			# Find a decent thumbnail (not logo or icon)
+			for img_url in page.images:
+				if any(ext in img_url.lower() for ext in [".jpg", ".png", ".jpeg"]) and "wiki" not in img_url.lower():
+					embed.set_thumbnail(url=img_url)
+					break
+
+		# Create "Read More" button
+		view = discord.ui.View()
+		view.add_item(discord.ui.Button(label="Read more", url=page.url, style=discord.ButtonStyle.link))
+
+		await ctx.send(embed=embed, view=view)
 
 	@commands.command(description='Translates a phrase with optional language hints. Usage: `.tr :en :zh <phrase>`')
 	async def tr(self, ctx, *, phrase: str = None):
