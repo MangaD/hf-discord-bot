@@ -155,79 +155,104 @@ def translate(text, in_lang='auto', out_lang='en', verify_ssl=True):
 		print(f"Error parsing translation data: {e}")
 		return None, in_lang
 
-# Wiktionary lookups
-wiktionary_uri = 'http://en.wiktionary.org/w/index.php?title={}&printable=yes'
-tag_pattern = re.compile(r'<[^>]+>')
-unordered_list_pattern = re.compile(r'(?ims)<ul>.*?</ul>')
+## Wiktionary functions
 
-def clean_html_tags(html_content):
-	"""Clean HTML tags from the provided content and format text."""
-	cleaned_text = tag_pattern.sub('', html_content).strip()
-	return (
-		cleaned_text.replace('\n', ' ')
-		.replace('\r', '')
-		.replace('(intransitive', '(intr.')
-		.replace('(transitive', '(trans.')
-	)
+def clean_wikitext(text: str) -> str:
+	"""Very basic cleaning of wikitext for readable output"""
+	# Remove templates like {{lang|la|...}}
+	text = re.sub(r'\{\{[^}]+\}\}', '', text)
+	# Remove [[links]] but keep the displayed text
+	text = re.sub(r'\[\[([^|\]]+)(?:\|[^]]+)?\]\]', r'\1', text)
+	# Remove ''italics'' and '''bold'''
+	text = re.sub(r"'''(.+?)'''", r'**\1**', text)
+	text = re.sub(r"''(.+?)''", r'*\1*', text)
+	# Remove HTML-like tags
+	text = re.sub(r'<[^>]+>', '', text)
+	# Collapse multiple newlines/spaces
+	text = re.sub(r'\n\s*\n+', '\n\n', text.strip())
+	return text
 
-def fetch_wiktionary_entry(word):
-	"""Fetch definitions from Wiktionary for the specified word."""
-	try:
-		response = requests.get(wiktionary_uri.format(quote(word)), stream=True)
-		response.raise_for_status()
-		content = html.unescape(response.text)
-		cleaned_content = unordered_list_pattern.sub('', content)
-	except requests.RequestException as e:
-		print(f"Error fetching Wiktionary entry: {e}")
-		return None, {}
+async def get_wiktionary_definition(word: str, lang: str = "en") -> Optional[str]:
+	params = {
+		"action": "query",
+		"prop": "extracts",
+		"explaintext": "1",
+		#"exintro": "1",           # only lead section
+		"redirects": "1",
+		"format": "json",
+		"titles": word,
+		"formatversion": "2",
+		"exsentences": "5",          # optional: helps get example sentences
+		"exlimit": "1",
+	}
 
-	mode = None
-	etymology = None
-	definitions = {}
+	async with aiohttp.ClientSession() as session:
+		# We'll use the nice MediaWiki API endpoint
+		WIKI_API = "https://en.wiktionary.org/w/api.php"
 
-	for line in cleaned_content.splitlines():
-		# Identify modes (parts of speech or etymology)
-		if 'id="Etymology"' in line:
-			mode = 'etymology'
-		elif 'id="Noun"' in line:
-			mode = 'noun'
-		elif 'id="Verb"' in line:
-			mode = 'verb'
-		elif 'id="Adjective"' in line:
-			mode = 'adjective'
-		elif 'id="Adverb"' in line:
-			mode = 'adverb'
-		elif 'id="Interjection"' in line:
-			mode = 'interjection'
-		elif 'id="Particle"' in line:
-			mode = 'particle'
-		elif 'id="Preposition"' in line:
-			mode = 'preposition'
-		elif 'id="' in line:
-			mode = None
+		async with session.get(WIKI_API, params=params, timeout=8) as resp:
+			if resp.status != 200:
+				return None
+				
+			data = await resp.json()
 
-		# Capture etymology or definition lines
-		elif mode == 'etymology' and '<p>' in line:
-			etymology = clean_html_tags(line)
-		elif mode and '<li>' in line:
-			definitions.setdefault(mode, []).append(clean_html_tags(line))
+			if "query" not in data or "pages" not in data["query"]:
+				return None
 
-		if '<hr' in line:
-			break
+			page = data["query"]["pages"][0]
 
-	return etymology, definitions
+			if "missing" in page or "invalid" in page:
+				return None
 
-# Part of speech categories to display
-parts_of_speech = ('preposition', 'particle', 'noun', 'verb', 'adjective', 'adverb', 'interjection')
+			title = page.get("title", word)
+			extract = page.get("extract", "")
 
-def format_definitions(result, definitions, max_definitions=2):
-	"""Format definitions for display with a limit on the number per part of speech."""
-	for part in parts_of_speech:
-		if part in definitions:
-			defs = definitions[part][:max_definitions]
-			formatted_defs = '\n'.join(f'{i + 1}. {e.strip(" .")}' for i, e in enumerate(defs))
-			result += f'\n\n**{part.capitalize()}**: {formatted_defs}'
-	return result.strip(' .,')
+			if not extract.strip():
+				return None
+
+			# Try to cut at the first real definition section
+			# This is very heuristic — Wiktionary format varies
+			lines = extract.splitlines()
+			in_english = False
+			definitions = []
+			current_def = ""
+			result = None
+
+			for line in lines:
+				line = line.strip()
+				if not line:
+					continue
+
+				if "==English==" in line or line.lower().startswith("english"):
+					in_english = True
+					continue
+
+				if in_english:
+					if line.startswith("==") and "==" in line[2:]:  # next major section
+						if definitions:
+							break
+						continue
+
+					if line.startswith("#"):
+						if current_def:
+							definitions.append(current_def.strip())
+						current_def = clean_wikitext(line[1:].strip())  # strip the #
+						if current_def:
+							definitions.append(f"• {current_def}")
+					elif current_def and not line.startswith((";", ":")):  # continuation
+						current_def += " " + clean_wikitext(line)
+
+			if current_def:
+				definitions.append(current_def.strip())
+
+			if definitions:
+				result = f"**{title}** (English)\n\n" + "\n".join(definitions[:10])
+			else:
+				# fallback
+				intro = clean_wikitext("\n".join(lines[:15]))  # first chunk
+				result = f"**{title}** (partial)\n\n{intro[:800]}...\n\nFull: https://en.wiktionary.org/wiki/{word}"
+
+	return result
 
 # Conversion constants
 KG_TO_LBS = 2.20462
@@ -453,25 +478,42 @@ class Utilities(commands.Cog):
 		except Exception as e:
 			await ctx.send(f"Error processing UrbanDictionary entry: {e}")
 
-	@commands.command(description='Look up a word on Wiktionary. Usage: `.wt <word>`')
-	async def wt(self, ctx, *, word: str = None):
+	@commands.command(name="wt", description="Look up a word on Wiktionary. Usage: `.wt <word>`")
+	async def wiktionary(self, ctx: commands.Context, *, query: str = None):
 		"""Look up a word on Wiktionary."""
-		if not word:
-			await ctx.send(f"**{ctx.author.name}:** Please provide a word to look up.")
+		if not query:
+			return await ctx.send(f"**{ctx.author.name}**: You need to specify a word!")
+
+		# Optional language hint, e.g., ":de topic"
+		lang = "en"
+		if query.startswith(":"):
+			parts = query.split(" ", 1)
+			if len(parts) == 2:
+				lang_hint = parts[0][1:]
+				if len(lang_hint) == 2:
+					lang = lang_hint
+					query = parts[1]
+
+		result = await get_wiktionary_definition(query.strip(), lang.lower())
+
+		if result is None or len(result.strip()) < 10:
+			await ctx.send(
+				f"No clear definition found for **{query}** on Wiktionary.",
+				ephemeral=False
+			)
 			return
 
-		try:
-			etymology, definitions = fetch_wiktionary_entry(word)
-			if not definitions:
-				await ctx.send(f"**{ctx.author.name}:** Couldn't find any definitions for '{word}'.")
-				return
+		# Discord has 2000 char limit per message
+		if len(result) > 1900:
+			result = result[:1890] + "... (truncated)"
 
-			result = format_definitions(f"**__{word}__**", definitions)
-			if len(result) > 300:
-				result = result[:295] + '[...]'
-			await ctx.send(result)
-		except Exception as e:
-			await ctx.send(f"Error fetching Wiktionary entry: {e}")
+		embed = discord.Embed(
+			description=result,
+			color=0x7289da
+		)
+		embed.set_footer(text="via Wiktionary • /define")
+
+		await ctx.send(embed=embed)
 
 	@commands.command(name="wiki", aliases=["w"], description="Search Wikipedia for a topic. Usage: `.wiki <topic>` or `.wiki :lang <topic>`")
 	async def wiki(self, ctx, *, query: str = None):
@@ -559,10 +601,6 @@ class Utilities(commands.Cog):
 	async def get_wikipedia_image(self, title: str) -> str | None:
 		"""Get a lead or representative image for a Wikipedia article, even if not provided in summary."""
 		encoded_title = urllib.parse.quote(title)
-
-		headers = {
-			"User-Agent": "hf-discord-bot/1.0 (https://gitlab.com/MangaD/hf-discord-bot)"
-		}
 
 		# 1. Try REST API first
 		rest_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"

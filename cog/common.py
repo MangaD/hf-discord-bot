@@ -50,6 +50,10 @@ MEMES_CHANNEL_ID = 933263833324220457
 NOTIFICATIONS_CHANNEL_ID = 1305142334286991460
 WELCOME_CHANNEL_ID = 1357433032490877241
 
+headers = {
+	"User-Agent": "hf-discord-bot/1.0 (https://gitlab.com/MangaD/hf-discord-bot)"
+}
+
 class MyGlobals:
 	"""Global state variables for the bot."""
 	last_message = None
