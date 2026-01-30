@@ -491,10 +491,25 @@ class Utilities(commands.Cog):
 		wikipedia.set_lang(lang)
 
 		try:
-			# Attempt to fetch article and summary
-			page = wikipedia.page(query, auto_suggest=True)
-			summary = wikipedia.summary(query, sentences=5, auto_suggest=True)
-		except wikipedia.DisambiguationError as e:
+			# Search for matching titles
+			results = wikipedia.search(query)
+			if not results:
+				return await ctx.send(f"**{ctx.author.name}:** No Wikipedia results found for `{query}`.")
+
+			# Try to find an exact title match (case-insensitive)
+			match = None
+			for title in results:
+				if title.lower() == query.lower():
+					match = title
+					break
+
+			# Otherwise default to the first returned result
+			page_title = match or results[0]
+
+			page = wikipedia.page(page_title, auto_suggest=False)
+			summary = wikipedia.summary(page_title, sentences=5, auto_suggest=False)
+
+		except wikipedia.exceptions.DisambiguationError as e:
 			# Show top disambiguation choices
 			options = "\n".join(f"• {opt}" for opt in e.options[:10])
 			embed = discord.Embed(
@@ -504,10 +519,12 @@ class Utilities(commands.Cog):
 			)
 			embed.set_footer(text="Please be more specific.")
 			return await ctx.send(embed=embed)
-		except wikipedia.PageError:
-			return await ctx.send(f"**{ctx.author.name}**: Could not find a page for '{query}'.")
+
+		except wikipedia.exceptions.PageError:
+			return await ctx.send(f"**{ctx.author.name}:** Could not find a page for `{query}`.")
+
 		except Exception as e:
-			return await ctx.send(f"**{ctx.author.name}**: An error occurred: {str(e)}")
+			return await ctx.send(f"**{ctx.author.name}:** Wikipedia error: {e}")
 
 		# Build embed
 		embed = discord.Embed(
