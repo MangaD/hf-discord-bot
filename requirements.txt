@@ -7,3 +7,4 @@ beautifulsoup4
 pytz # Timezone
 openai # ChatGPT
 wikipedia
+aiohttp

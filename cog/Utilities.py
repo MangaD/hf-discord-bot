@@ -543,11 +543,84 @@ class Utilities(commands.Cog):
 					embed.set_thumbnail(url=img_url)
 					break
 
+		# Try to fetch image using REST API
+		# The wikipedia Python package (which wraps the MediaWiki API) does not fetch infobox/media images directly.
+		# To reliably get the main image (like the one shown in the infobox), you can use the MediaWiki REST API.
+		#image_url = await self.get_wikipedia_image(page.title)
+		#if image_url:
+		#	embed.set_thumbnail(url=image_url)
+
 		# Create "Read More" button
 		view = discord.ui.View()
 		view.add_item(discord.ui.Button(label="Read more", url=page.url, style=discord.ButtonStyle.link))
 
 		await ctx.send(embed=embed, view=view)
+
+	async def get_wikipedia_image(self, title: str) -> str | None:
+		"""Get a lead or representative image for a Wikipedia article, even if not provided in summary."""
+		encoded_title = urllib.parse.quote(title)
+
+		headers = {
+			"User-Agent": "hf-discord-bot/1.0 (https://gitlab.com/MangaD/hf-discord-bot)"
+		}
+
+		# 1. Try REST API first
+		rest_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"
+		async with aiohttp.ClientSession(headers=headers) as session:
+			async with session.get(rest_url) as resp:
+				if resp.status == 200:
+					data = await resp.json()
+					image = data.get("originalimage", {}).get("source")
+					if image:
+						return image
+
+		# 2. Try pageimages thumbnail
+		pageimg_url = (
+			f"https://en.wikipedia.org/w/api.php?action=query&titles={encoded_title}"
+			f"&prop=pageimages&format=json&pithumbsize=600"
+		)
+		async with aiohttp.ClientSession(headers=headers) as session:
+			async with session.get(pageimg_url) as resp:
+				if resp.status == 200:
+					data = await resp.json()
+					pages = data.get("query", {}).get("pages", {})
+					for page in pages.values():
+						thumb = page.get("thumbnail", {}).get("source")
+						if thumb:
+							return thumb
+
+		# 3. Try listing actual image files on the page
+		images_url = (
+			f"https://en.wikipedia.org/w/api.php?action=query&titles={encoded_title}"
+			f"&prop=images&format=json"
+		)
+		async with aiohttp.ClientSession(headers=headers) as session:
+			async with session.get(images_url) as resp:
+				if resp.status == 200:
+					data = await resp.json()
+					pages = data.get("query", {}).get("pages", {})
+					for page in pages.values():
+						images = page.get("images", [])
+						for image in images:
+							title = image["title"]
+							if any(title.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".svg"]):
+								# 4. Resolve actual image URL
+								file_title = urllib.parse.quote(title)
+								imageinfo_url = (
+									"https://en.wikipedia.org/w/api.php?action=query"
+									f"&titles={file_title}"
+									"&prop=imageinfo"
+									"&iiprop=url" # |size|mime
+									"&format=json"
+								)
+								async with session.get(imageinfo_url) as image_resp:
+									if image_resp.status == 200:
+										image_data = await image_resp.json()
+										for file_page in image_data["query"]["pages"].values():
+											if "imageinfo" in file_page:
+												return file_page["imageinfo"][0]["url"]
+
+		return None
 
 	@commands.command(description='Translates a phrase with optional language hints. Usage: `.tr :en :zh <phrase>`')
 	async def tr(self, ctx, *, phrase: str = None):
