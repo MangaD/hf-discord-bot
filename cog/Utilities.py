@@ -495,7 +495,15 @@ class Utilities(commands.Cog):
 			page = wikipedia.page(query, auto_suggest=True)
 			summary = wikipedia.summary(query, sentences=5, auto_suggest=True)
 		except wikipedia.DisambiguationError as e:
-			return await ctx.send(f"**{ctx.author.name}**: That query is ambiguous. Try one of these:\n{', '.join(e.options[:5])}")
+			# Show top disambiguation choices
+			options = "\n".join(f"• {opt}" for opt in e.options[:10])
+			embed = discord.Embed(
+				title="Disambiguation",
+				description=f"**{query}** may refer to multiple things:\n\n{options}",
+				color=discord.Color.gold()
+			)
+			embed.set_footer(text="Please be more specific.")
+			return await ctx.send(embed=embed)
 		except wikipedia.PageError:
 			return await ctx.send(f"**{ctx.author.name}**: Could not find a page for '{query}'.")
 		except Exception as e:
