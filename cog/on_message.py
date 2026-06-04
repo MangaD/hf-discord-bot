@@ -4,6 +4,9 @@ import asyncio
 from gtts import gTTS
 from io import BytesIO
 from .utils.FFmpegPCMAudioGTTS import FFmpegPCMAudioGTTS
+from collections import defaultdict
+from time import time
+from discord.ext import tasks
 
 media_only_channels = [
 	MEDIA_CHANNEL_ID,
@@ -14,10 +17,30 @@ media_only_channels = [
 ]
 
 media_url_patterns = [
-	r"(?:https?:\/\/)?(?:www|m\.)?(youtube\.com|youtu.be)\/[\w\-]+",  # YouTube
-	r"https?:\/\/.*\.(png|gif|webp|jpeg|jpg)\??.*",				   # Images
-	r"https:\/\/(?:www\.)?deviantart.com\/.+"						 # DeviantArt
+	r"(?:https?:\/\/)?(?:www|m\.)?(youtube\.com|youtu.be)\/[\w\-]+", # YouTube
+	r"https?:\/\/.*\.(png|gif|webp|jpeg|jpg)\??.*",                  # Images
+	r"https:\/\/(?:www\.)?deviantart.com\/.+"                        # DeviantArt
 ]
+
+# Anti-spam tracking: {user_id: [(message_content, channel_id, timestamp), ...]}
+user_message_history = defaultdict(list)
+
+@tasks.loop(seconds=15)
+async def cleanup_old_messages():
+	"""Periodically remove message records older than 15 seconds."""
+	try:
+		current_time = time()
+		for user_id in list(user_message_history.keys()):
+			#print(f"cleanup_old_messages {user_id}")
+			user_message_history[user_id] = [
+				(content, channel_id, ts)
+				for content, channel_id, ts in user_message_history[user_id]
+				if current_time - ts < 15
+			]
+			if not user_message_history[user_id]:
+				del user_message_history[user_id]
+	except asyncio.CancelledError:
+		pass
 
 def mentions_to_nicks(msg):
 	"""Convert mentions to nicknames in the given message content."""
@@ -38,7 +61,122 @@ def replace_links(text):
 	"""Replace URLs in the given text with 'url'."""
 	return re.sub(r'https?:\/\/\S+', 'url', text)
 
-async def tts_f(message, client):
+def get_spam_fingerprint(message):
+	"""Create a stable fingerprint for spam detection."""
+	text = message.content.strip().lower() if message.content else ""
+	if message.attachments:
+		attachment_sigs = "|".join(sorted([f"{att.size}_{att.filename.split('.')[-1]}" for att in message.attachments])).lower()
+		return f"{text}|{attachment_sigs}" if text else attachment_sigs
+	return text
+
+async def check_cross_channel_spam(message):
+	"""Detect and handle cross-channel spam."""
+	# Ignore bot messages and commands
+	if message.author == client.user or message.content.startswith(BOT_PREFIX):
+		return False
+
+	current_time = time()
+	user_id = message.author.id
+	msg_content = get_spam_fingerprint(message)
+
+	# Add current message to tracking
+	user_message_history[user_id].append((msg_content, message.channel.id, current_time))
+
+	# Check for spam: same message in 3+ channels within 15 seconds
+	recent_messages = [
+		(content, channel_id, ts)
+		for content, channel_id, ts in user_message_history[user_id]
+		if current_time - ts <= 15
+	]
+
+	# Count channels with the same message
+	message_channels = defaultdict(set)
+	for content, channel_id, _ in recent_messages:
+		if content == msg_content:
+			message_channels[content].add(channel_id)
+
+	# If the current message appears in 3+ channels within 15 seconds
+	if msg_content in message_channels and len(message_channels[msg_content]) >= 3:
+		print(msg_content)
+		await handle_spam(message, msg_content)
+		return True
+	return False
+
+async def handle_spam(message, msg_content):
+	"""Handle spam violation: delete messages, strip roles, apply Bandit role, notify staff."""
+	spam_messages = []
+	stripped_roles = []
+
+	# Strip all roles and apply Bandit role
+	try:
+		member = message.guild.get_member(message.author.id)
+		if member:
+			bandit_role = discord.utils.get(message.guild.roles, name="Bandit")
+			if bandit_role:
+				stripped_roles = [role.name for role in member.roles if role != message.guild.default_role]
+				await member.edit(roles=[bandit_role], reason="Anti-spam violation: cross-channel spam detected")
+			else:
+				stripped_roles = [role.name for role in member.roles if role != message.guild.default_role]
+	except discord.Forbidden:
+		pass
+	except Exception:
+		pass
+
+	# Search all text channels for spam messages from the user with matching fingerprint
+	try:
+		for channel in message.guild.text_channels:
+			try:
+				async for msg in channel.history(limit=10, oldest_first=False):
+					if (msg.author.id == message.author.id and
+						get_spam_fingerprint(msg) == msg_content):
+						spam_messages.append(msg)
+			except discord.Forbidden:
+				pass
+			except discord.NotFound:
+				pass
+	except Exception:
+		pass
+
+	# Add the current message if not already added
+	if message not in spam_messages:
+		spam_messages.append(message)
+
+	# Delete all spam messages
+	for msg in spam_messages:
+		try:
+			await msg.delete()
+		except discord.Forbidden:
+			pass
+		except discord.NotFound:
+			pass
+
+	# Send staff notification
+	await notify_staff(message, msg_content, len(spam_messages), stripped_roles)
+
+async def notify_staff(message, msg_content, message_count, stripped_roles=None):
+	"""Send a notification to the staff channel."""
+	stripped_roles = stripped_roles or []
+	try:
+		staff_channel = client.get_channel(STAFF_CHANNEL_ID)
+		if staff_channel:
+			embed = discord.Embed(
+				title="🚨 Cross-Channel Spam Detected",
+				description=f"User {message.author.mention} posted the same message in 3+ channels within 15 seconds.",
+				color=discord.Color.red()
+			)
+			embed.add_field(name="User", value=f"{message.author} (ID: {message.author.id})", inline=False)
+			embed.add_field(name="Spam Messages Deleted", value=str(message_count), inline=True)
+			embed.add_field(name="Action Taken", value="Roles stripped and Bandit role applied", inline=True)
+			embed.add_field(name="Roles Stripped", value=(', '.join(stripped_roles) if stripped_roles else 'None'), inline=False)
+			embed.add_field(name="Message Preview", value=f"```{msg_content[:100]}```", inline=False)
+			
+			await staff_channel.send(embed=embed)
+	except discord.Forbidden:
+		pass
+	except Exception:
+		pass
+
+async def tts_f(message):
 	"""Convert message text to speech and play it in the voice channel."""
 	if not MyGlobals.tts_enabled or not message.content:
 		return
@@ -70,6 +208,10 @@ async def on_message(message):
 	if message.author == client.user:
 		return
 
+	# Check for cross-channel spam - if detected, exit early
+	if message.guild and await check_cross_channel_spam(message):
+		return
+
 	hf_bot_pattern = re.compile(fr"^(?:{re.escape(client.user.name)}|{re.escape(client.user.mention)})[ \n\t\r]*!+$", re.IGNORECASE)
 
 	if message.content.lower() == f"<@!{client.user.id}>":
@@ -88,7 +230,7 @@ async def on_message(message):
 	if not message.content.startswith(BOT_PREFIX):
 		MyGlobals.last_message = message.content
 
-	await tts_f(message, client)
+	await tts_f(message)
 
 	if (
 		message.channel.id in media_only_channels

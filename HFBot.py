@@ -39,6 +39,9 @@ async def on_ready():
 		# twitch.twitch()	  # Notifies a channel when a Twitch stream goes live
 	)
 
+	if not cleanup_old_messages.is_running():
+		cleanup_old_messages.start()
+
 	# Initialize database on bot startup
 	MyGlobals.db.init_db()
 

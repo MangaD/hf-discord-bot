@@ -193,10 +193,10 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 				await after.edit(roles=[bandit_role], reason="Bandit is not allowed to change roles")
 				#print(f"Attempted to change roles: {before.roles} --- {after.roles}")
 			except discord.Forbidden:
-				print(f"Missing permissions to edit roles for {after} in guild {guild.id}")
+				print(f"Missing permissions to edit roles for {after} in guild {after.guild.id}")
 				return
 			except discord.HTTPException as e:
-				print(f"Discord API error for {after} in guild {guild.id}: {e}")
+				print(f"Discord API error for {after} in guild {after.guild.id}: {e}")
 				return
 		else:
 			await MyGlobals.db.update_user_in_db(after.id, str(after), after.display_name, after.nick, after.guild.id, after.roles)
