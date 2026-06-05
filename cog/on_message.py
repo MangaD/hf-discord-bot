@@ -97,7 +97,6 @@ async def check_cross_channel_spam(message):
 
 	# If the current message appears in 3+ channels within 15 seconds
 	if msg_content in message_channels and len(message_channels[msg_content]) >= 3:
-		print(msg_content)
 		await handle_spam(message, msg_content)
 		return True
 	return False
@@ -130,25 +129,18 @@ async def handle_spam(message, msg_content):
 					if (msg.author.id == message.author.id and
 						get_spam_fingerprint(msg) == msg_content):
 						spam_messages.append(msg)
+						try:
+							await msg.delete()
+						except discord.Forbidden:
+							pass
+						except discord.NotFound:
+							pass
 			except discord.Forbidden:
 				pass
 			except discord.NotFound:
 				pass
 	except Exception:
 		pass
-
-	# Add the current message if not already added
-	if message not in spam_messages:
-		spam_messages.append(message)
-
-	# Delete all spam messages
-	for msg in spam_messages:
-		try:
-			await msg.delete()
-		except discord.Forbidden:
-			pass
-		except discord.NotFound:
-			pass
 
 	# Send staff notification
 	await notify_staff(message, msg_content, len(spam_messages), stripped_roles)
