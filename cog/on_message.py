@@ -123,7 +123,7 @@ async def handle_spam(message, msg_content):
 
 	# Search all text channels for spam messages from the user with matching fingerprint
 	try:
-		for channel in message.guild.text_channels:
+		for channel in list(message.guild.text_channels) + list(message.guild.voice_channels):
 			try:
 				async for msg in channel.history(limit=10, oldest_first=False):
 					if (msg.author.id == message.author.id and
