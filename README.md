@@ -77,6 +77,10 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
 
 - Moderation
   - **bandit:** Gives the Bandit role to a user in the Hero Fighter server, even if the user rejoins the server.
+  - **setnick:** Changes the bot's display name (nickname) in the current guild.
+  - **setavatar:** Changes the bot's avatar in the current guild.
+  - **setbanner:** Changes the bot's banner in the current guild.
+  - **setbio:** Changes the bot's bio/about me section in the current guild.
 
 - Utilities
   - **ud:** Look up a word on UrbanDictionary.

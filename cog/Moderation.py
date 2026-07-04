@@ -4,6 +4,7 @@ from .checks import *
 from discord.ext import commands
 import sqlite3
 import asyncio
+import aiohttp
 
 
 class Moderation(commands.Cog):
@@ -158,6 +159,194 @@ class Moderation(commands.Cog):
 			await ctx.channel.send(error)
 		else:
 			await ctx.channel.send(f"An unexpected error occurred: {error}")
+
+	@commands.command(
+		description=(
+			"Changes the bot's display name (nickname) in the current guild.\n"
+			"Usage: `.setnick [name]`\n"
+			"To remove the nickname, use `.setnick` with no arguments.\n"
+			"Max 32 characters."
+		)
+	)
+	@commands.has_permissions(manage_guild=True)
+	async def setnick(self, ctx, *, name: str = None):
+		"""Set the bot's nickname in the guild."""
+		
+		if not ctx.author.guild_permissions.manage_guild:
+			await ctx.channel.send(f"**{ctx.author.display_name}:** You lack permission to use this command. :angry:")
+			return
+		
+		# Check if the bot has permission to change its own nickname
+		if not ctx.guild.me.guild_permissions.change_nickname:
+			await ctx.send(f"**{ctx.author.display_name}:** I don't have permission to change my nickname!")
+			return
+		
+		try:
+			if name is None:
+				await ctx.guild.me.edit(nick=None, reason=f"Nickname reset by {ctx.author.display_name}")
+			else:
+				if len(name) > 32:
+					await ctx.send(f"**{ctx.author.display_name}:** Nickname must be 32 characters or less.")
+					return
+				await ctx.guild.me.edit(nick=name, reason=f"Nickname changed by {ctx.author.display_name}")
+		except discord.Forbidden:
+			await ctx.send(f"**{ctx.author.display_name}:** I lack permission to change my nickname!")
+		except discord.HTTPException as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An error occurred while changing nickname: {e}")
+		except Exception as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An unexpected error occurred: {e}")
+
+	@commands.command(
+		description=(
+			"Changes the bot's avatar.\n"
+			"Usage:\n"
+			"  `.setavatar [image_url]` - Provide a direct image URL\n"
+			"  `.setavatar` with an attachment - Upload an image with the command\n"
+			"  Reply to a message with an image, then use `.setavatar` - Extract from replied message\n"
+			"Supported formats: PNG, JPG, GIF, WebP (max 10 MB)\n"
+			"This requires administrator permissions."
+		)
+	)
+	@commands.has_permissions(administrator=True)
+	async def setavatar(self, ctx, image_url: str = None):
+		"""Set the bot's avatar."""
+		
+		if not ctx.author.guild_permissions.administrator:
+			await ctx.channel.send(f"**{ctx.author.display_name}:** You lack permission to use this command. :angry:")
+			return
+		
+		avatar_data = None
+		
+		# Try to get image from URL or replied message
+		if image_url is None:
+			if ctx.message.attachments:
+				avatar_data = await ctx.message.attachments[0].read()
+			elif ctx.message.reference:
+				replied_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+				if replied_msg.attachments:
+					avatar_data = await replied_msg.attachments[0].read()
+				else:
+					await ctx.send(f"**{ctx.author.display_name}:** No image found in the replied message.")
+					return
+			else:
+				await ctx.send(f"**{ctx.author.display_name}:** Please provide an image URL, attach an image, or reply to a message with an image.")
+				return
+		else:
+			try:
+				async with aiohttp.ClientSession() as session:
+					async with session.get(image_url) as resp:
+						if resp.status != 200:
+							await ctx.send(f"**{ctx.author.display_name}:** Failed to download image from URL.")
+							return
+						avatar_data = await resp.read()
+			except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+				await ctx.send(f"**{ctx.author.display_name}:** Failed to download image: {e}")
+				return
+		
+		if avatar_data is None:
+			await ctx.send(f"**{ctx.author.display_name}:** No image data found.")
+			return
+		
+		try:
+			await ctx.guild.me.edit(avatar=avatar_data, reason=f"Avatar changed by {ctx.author.display_name}")
+		except discord.Forbidden:
+			await ctx.send(f"**{ctx.author.display_name}:** I lack permission to change my avatar!")
+		except discord.HTTPException as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An error occurred while changing avatar: {e}")
+		except Exception as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An unexpected error occurred: {e}")
+
+	@commands.command(
+		description=(
+			"Changes the bot's banner.\n"
+			"Usage:\n"
+			"  `.setbanner [image_url]` - Provide a direct image URL\n"
+			"  `.setbanner` with an attachment - Upload an image with the command\n"
+			"  Reply to a message with an image, then use `.setbanner` - Extract from replied message\n"
+			"Supported formats: PNG, JPG, GIF, WebP (max 10 MB)\n"
+			"This requires administrator permissions."
+		)
+	)
+	@commands.has_permissions(administrator=True)
+	async def setbanner(self, ctx, image_url: str = None):
+		"""Set the bot's banner."""
+		
+		if not ctx.author.guild_permissions.administrator:
+			await ctx.channel.send(f"**{ctx.author.display_name}:** You lack permission to use this command. :angry:")
+			return
+		
+		banner_data = None
+		
+		# Try to get image from URL or replied message
+		if image_url is None:
+			if ctx.message.attachments:
+				banner_data = await ctx.message.attachments[0].read()
+			elif ctx.message.reference:
+				replied_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+				if replied_msg.attachments:
+					banner_data = await replied_msg.attachments[0].read()
+				else:
+					await ctx.send(f"**{ctx.author.display_name}:** No image found in the replied message.")
+					return
+			else:
+				await ctx.send(f"**{ctx.author.display_name}:** Please provide an image URL, attach an image, or reply to a message with an image.")
+				return
+		else:
+			try:
+				async with aiohttp.ClientSession() as session:
+					async with session.get(image_url) as resp:
+						if resp.status != 200:
+							await ctx.send(f"**{ctx.author.display_name}:** Failed to download image from URL.")
+							return
+						banner_data = await resp.read()
+			except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+				await ctx.send(f"**{ctx.author.display_name}:** Failed to download image: {e}")
+				return
+		
+		if banner_data is None:
+			await ctx.send(f"**{ctx.author.display_name}:** No image data found.")
+			return
+		
+		try:
+			await ctx.guild.me.edit(banner=banner_data, reason=f"Banner changed by {ctx.author.display_name}")
+		except discord.Forbidden:
+			await ctx.send(f"**{ctx.author.display_name}:** I lack permission to change my banner!")
+		except discord.HTTPException as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An error occurred while changing banner: {e}")
+		except Exception as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An unexpected error occurred: {e}")
+
+	@commands.command(
+		description=(
+			"Changes the bot's bio (about me).\n"
+			"Usage: `.setbio [text]`\n"
+			"To remove the bio, use `.setbio` with no arguments.\n"
+			"Max 190 characters.\n"
+			"This requires administrator permissions."
+		)
+	)
+	@commands.has_permissions(administrator=True)
+	async def setbio(self, ctx, *, text: str = None):
+		"""Set the bot's bio."""
+		
+		if not ctx.author.guild_permissions.administrator:
+			await ctx.channel.send(f"**{ctx.author.display_name}:** You lack permission to use this command. :angry:")
+			return
+		
+		try:
+			if text is None:
+				await ctx.guild.me.edit(bio=None, reason=f"Bio reset by {ctx.author.display_name}")
+			else:
+				if len(text) > 190:
+					await ctx.send(f"**{ctx.author.display_name}:** Bio must be 190 characters or less.")
+					return
+				await ctx.guild.me.edit(bio=text, reason=f"Bio changed by {ctx.author.display_name}")
+		except discord.Forbidden:
+			await ctx.send(f"**{ctx.author.display_name}:** I lack permission to change my bio!")
+		except discord.HTTPException as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An error occurred while changing bio: {e}")
+		except Exception as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An unexpected error occurred: {e}")
 
 async def setup(client):
 	await client.add_cog(Moderation(client))
