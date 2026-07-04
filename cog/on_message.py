@@ -71,11 +71,15 @@ def get_spam_fingerprint(message):
 
 async def check_cross_channel_spam(message):
 	"""Detect and handle cross-channel spam."""
-	if not message.guild or message.guild.id != HF_GUILD_ID:
+	if not message.guild:
 		return False
 
 	# Ignore bot messages and commands
 	if message.author == client.user or message.content.startswith(BOT_PREFIX):
+		return False
+
+	settings = MyGlobals.db.get_guild_settings(message.guild.id)
+	if not settings.get("spam_enabled", 1):
 		return False
 
 	current_time = time()
@@ -85,64 +89,76 @@ async def check_cross_channel_spam(message):
 	# Add current message to tracking
 	user_message_history[user_id].append((msg_content, message.channel.id, current_time))
 
-	# Check for spam: same message in 3+ channels within 15 seconds
+	# Check for spam using guild-configured window and trigger count
 	recent_messages = [
 		(content, channel_id, ts)
 		for content, channel_id, ts in user_message_history[user_id]
-		if current_time - ts <= 15
+		if current_time - ts <= settings.get("spam_window_seconds", 15)
 	]
 
-	# Count channels with the same message
 	message_channels = defaultdict(set)
 	for content, channel_id, _ in recent_messages:
 		if content == msg_content:
 			message_channels[content].add(channel_id)
 
-	# If the current message appears in 3+ channels within 15 seconds
-	if msg_content in message_channels and len(message_channels[msg_content]) >= 3:
-		await handle_spam(message, msg_content)
+	trigger_count = settings.get("spam_trigger_channel_count", 3)
+	if msg_content in message_channels and len(message_channels[msg_content]) >= trigger_count:
+		await handle_spam(message, msg_content, settings)
 		return True
 	return False
 
-async def handle_spam(message, msg_content):
-	"""Handle spam violation: delete messages, kick if it's a new account,
-	otherwise strip roles and apply Bandit role.
+async def handle_spam(message, msg_content, settings):
+	"""Handle spam violation using per-guild settings.
 	Notify the staff channel with details of the action taken.
 	"""
 	spam_messages = []
 	stripped_roles = []
-	action_taken = "Roles stripped and Bandit role applied"
+	action_taken = "No action taken"
 
 	try:
 		member = message.guild.get_member(message.author.id)
 		if member:
 			stripped_roles = [role.name for role in member.roles if role != message.guild.default_role]
 
-			bandit_role = discord.utils.get(message.guild.roles, name="Bandit")
-			if bandit_role:
-				await member.edit(roles=[bandit_role], reason="Anti-spam violation: cross-channel spam detected")
-			
+			bandit_role_name = settings.get("bandit_role_name", "Bandit")
+			bandit_role = discord.utils.get(message.guild.roles, name=bandit_role_name)
+			penalty = settings.get("spam_penalty", "bandit")
 			joined_recently = False
 
 			if member.joined_at:
-				# Check if the member joined within the last 3 days (259200 seconds)
-				joined_recently = (discord.utils.utcnow() - member.joined_at).total_seconds() <= 259200
+				joined_recently = (
+					discord.utils.utcnow() - member.joined_at
+				).total_seconds() <= settings.get("spam_recent_join_seconds", 259200)
 
-			if joined_recently:
-				await member.kick(reason="Anti-spam violation: new account spam detected")
+			if penalty == "ban":
+				await member.ban(reason="Anti-spam violation: cross-channel spam detected", delete_message_days=0)
+				action_taken = "Banned from server"
+			elif penalty == "ban_recent" and joined_recently:
+				await member.ban(reason="Anti-spam violation: recent account anti-spam violation", delete_message_days=0)
+				action_taken = "Banned from server"
+			elif penalty == "kick" or (penalty == "kick_recent" and joined_recently):
+				await member.kick(reason="Anti-spam violation: cross-channel spam detected")
 				action_taken = "Kicked from server"
+			elif bandit_role:
+				await member.edit(roles=[bandit_role], reason="Anti-spam violation: cross-channel spam detected")
+				action_taken = f"Roles stripped and {bandit_role.name} role applied"
+			else:
+				await member.edit(roles=[], reason="Anti-spam violation: cross-channel spam detected")
+				action_taken = "Roles stripped"
 	except discord.Forbidden:
 		pass
 	except Exception:
 		pass
 
-	# Search all text channels for spam messages from the user with matching fingerprint
+	# Search all text and voice channels for spam messages from the user with matching fingerprint
 	try:
 		for channel in list(message.guild.text_channels) + list(message.guild.voice_channels):
 			try:
 				async for msg in channel.history(limit=10, oldest_first=False):
-					if (msg.author.id == message.author.id and
-						get_spam_fingerprint(msg) == msg_content):
+					if (
+						msg.author.id == message.author.id and
+						get_spam_fingerprint(msg) == msg_content
+					):
 						spam_messages.append(msg)
 						try:
 							await msg.delete()
@@ -158,17 +174,23 @@ async def handle_spam(message, msg_content):
 		pass
 
 	# Send staff notification
-	await notify_staff(message, msg_content, len(spam_messages), stripped_roles, action_taken)
+	await notify_staff(message, msg_content, len(spam_messages), stripped_roles, action_taken, settings)
 
-async def notify_staff(message, msg_content, message_count, stripped_roles=None, action_taken="Roles stripped and Bandit role applied"):
+async def notify_staff(message, msg_content, message_count, stripped_roles=None, action_taken="Roles stripped and Bandit role applied", settings=None):
 	"""Send a notification to the staff channel."""
 	stripped_roles = stripped_roles or []
 	try:
-		staff_channel = client.get_channel(STAFF_CHANNEL_ID)
+		staff_channel = None
+		if settings is not None:
+			staff_channel_id = settings.get("staff_channel_id")
+			if staff_channel_id:
+				staff_channel = message.guild.get_channel(staff_channel_id)
+		if not staff_channel:
+			staff_channel = client.get_channel(STAFF_CHANNEL_ID)
 		if staff_channel:
 			embed = discord.Embed(
 				title="🚨 Cross-Channel Spam Detected",
-				description=f"User {message.author.mention} posted the same message in 3+ channels within 15 seconds.",
+				description=f"User {message.author.mention} posted the same message in {settings.get('spam_trigger_channel_count', 3)}+ channels within {settings.get('spam_window_seconds', 15)} seconds.",
 				color=discord.Color.red()
 			)
 			embed.add_field(name="User", value=f"{message.author} (ID: {message.author.id})", inline=False)
@@ -216,7 +238,7 @@ async def on_message(message):
 		return
 
 	# Check for cross-channel spam - if detected, exit early
-	if message.guild and message.guild.id == HF_GUILD_ID and await check_cross_channel_spam(message):
+	if message.guild and await check_cross_channel_spam(message):
 		return
 
 	hf_bot_pattern = re.compile(fr"^(?:{re.escape(client.user.name)}|{re.escape(client.user.mention)})[ \n\t\r]*!+$", re.IGNORECASE)

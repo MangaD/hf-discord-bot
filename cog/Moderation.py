@@ -71,6 +71,143 @@ class Moderation(commands.Cog):
 		except Exception as e:
 			await ctx.send(f"An unexpected error occurred: {e}")
 
+	@commands.group(
+		invoke_without_command=True,
+		description=(
+			"View or configure per-guild cross-channel spam settings."
+		)
+	)
+	@commands.has_permissions(administrator=True)
+	async def spamconfig(self, ctx):
+		"""View or update this server's anti-spam settings."""
+		if ctx.guild is None:
+			await ctx.send("This command can only be used in a server.")
+			return
+		await ctx.send(
+			"Usage: `.spamconfig show` | `.spamconfig set <option> <value>` | `.spamconfig reset`\n"
+			"Available options: staff_channel, bandit_role, trigger_count, window_seconds, penalty, recent_join_seconds, enabled"
+		)
+
+	@spamconfig.command(name="show")
+	@commands.has_permissions(administrator=True)
+	async def spamconfig_show(self, ctx):
+		if ctx.guild is None:
+			await ctx.send("This command can only be used in a server.")
+			return
+		if not ctx.author.guild_permissions.administrator:
+			await ctx.send(f"**{ctx.author.display_name}:** You must be a server administrator to use this command.")
+			return
+
+		settings = MyGlobals.db.get_guild_settings(ctx.guild.id)
+		staff_channel = None
+		if settings.get("staff_channel_id"):
+			staff_channel = ctx.guild.get_channel(settings["staff_channel_id"])
+		bandit_role = discord.utils.get(ctx.guild.roles, name=settings.get("bandit_role_name", "Bandit"))
+
+		embed = discord.Embed(
+			title="Guild Spam Configuration",
+			color=discord.Color.blue()
+		)
+		embed.add_field(name="Enabled", value="Yes" if settings.get("spam_enabled", 1) else "No", inline=True)
+		embed.add_field(name="Staff Channel", value=staff_channel.mention if staff_channel else "Not configured", inline=True)
+		embed.add_field(name="Bandit Role", value=bandit_role.name if bandit_role else settings.get("bandit_role_name", "Bandit"), inline=True)
+		embed.add_field(name="Trigger Count", value=str(settings.get("spam_trigger_channel_count", 3)), inline=True)
+		embed.add_field(name="Window Seconds", value=str(settings.get("spam_window_seconds", 15)), inline=True)
+		embed.add_field(name="Penalty", value=str(settings.get("spam_penalty", "bandit")), inline=True)
+		embed.add_field(name="Recent Join Seconds", value=str(settings.get("spam_recent_join_seconds", 259200)), inline=True)
+		await ctx.send(embed=embed)
+
+	@spamconfig.command(name="set")
+	@commands.has_permissions(administrator=True)
+	async def spamconfig_set(self, ctx, key: str = None, *, value: str = None):
+		if ctx.guild is None:
+			await ctx.send("This command can only be used in a server.")
+			return
+		if not ctx.author.guild_permissions.administrator:
+			await ctx.send(f"**{ctx.author.display_name}:** You must be a server administrator to use this command.")
+			return
+		if key is None or value is None:
+			await ctx.send("Usage: `.spamconfig set <option> <value>`")
+			return
+
+		key = key.lower()
+		normalized = {
+			"staff_channel": "staff_channel_id",
+			"bandit_role": "bandit_role_name",
+			"trigger_count": "spam_trigger_channel_count",
+			"window_seconds": "spam_window_seconds",
+			"penalty": "spam_penalty",
+			"recent_join_seconds": "spam_recent_join_seconds",
+			"enabled": "spam_enabled",
+		}.get(key)
+
+		if normalized is None:
+			await ctx.send("Invalid option. Valid options: staff_channel, bandit_role, trigger_count, window_seconds, penalty, recent_join_seconds, enabled")
+			return
+
+		if normalized == "staff_channel_id":
+			channel_id = None
+			if value.startswith("<#") and value.endswith(">"):
+				channel_id = int(value[2:-1])
+			else:
+				try:
+					channel_id = int(value)
+				except ValueError:
+					await ctx.send("Please provide a valid channel mention or ID.")
+					return
+			if not ctx.guild.get_channel(channel_id):
+				await ctx.send("That channel was not found in this server.")
+				return
+			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, channel_id)
+
+		elif normalized == "bandit_role_name":
+			role_name = value.strip()
+			if not role_name:
+				await ctx.send("Please provide a valid role name.")
+				return
+			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, role_name)
+
+		elif normalized in {"spam_trigger_channel_count", "spam_window_seconds", "spam_recent_join_seconds"}:
+			try:
+				num_value = int(value)
+				if num_value < 1:
+					raise ValueError
+			except ValueError:
+				await ctx.send("Please provide a positive whole number.")
+				return
+			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, num_value)
+
+		elif normalized == "spam_penalty":
+			option = value.strip().lower()
+			if option not in {"bandit", "kick_recent", "kick", "ban", "ban_recent"}:
+				await ctx.send("Penalty must be one of: bandit, kick_recent, kick, ban, ban_recent")
+				return
+			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, option)
+
+		elif normalized == "spam_enabled":
+			option = value.strip().lower()
+			if option in {"yes", "on", "true", "1"}:
+				stored = 1
+			elif option in {"no", "off", "false", "0"}:
+				stored = 0
+			else:
+				await ctx.send("Enabled must be one of: on/off, yes/no, true/false")
+				return
+			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, stored)
+
+		await ctx.send(f"Updated spam setting `{key}` to `{value}`.")
+
+	@spamconfig.command(name="reset")
+	@commands.has_permissions(administrator=True)
+	async def spamconfig_reset(self, ctx):
+		if ctx.guild is None:
+			await ctx.send("This command can only be used in a server.")
+			return
+		if not ctx.author.guild_permissions.administrator:
+			await ctx.send(f"**{ctx.author.display_name}:** You must be a server administrator to use this command.")
+			return
+		MyGlobals.db.reset_guild_settings(ctx.guild.id)
+		await ctx.send("Spam settings have been reset to defaults for this server.")
 
 	@commands.command(
 		description=(
@@ -168,7 +305,7 @@ class Moderation(commands.Cog):
 			"Max 32 characters."
 		)
 	)
-	@commands.has_permissions(manage_guild=True)
+	@commands.has_permissions(administrator=True)
 	async def setnick(self, ctx, *, name: str = None):
 		"""Set the bot's nickname in the guild."""
 		

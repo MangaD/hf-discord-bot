@@ -7,6 +7,7 @@ class Database:
 	def __init__(self, client):
 		self.client = client
 		self.FILE_NAME='guild_users.db'
+		self._settings_cache = {}
 
 	def init_db(self):
 		conn = sqlite3.connect(self.FILE_NAME)
@@ -21,8 +22,85 @@ class Database:
 				roles TEXT NOT NULL
 			)
 		''')
+		cursor.execute('''
+			CREATE TABLE IF NOT EXISTS guild_settings (
+				guild_id INTEGER PRIMARY KEY,
+				staff_channel_id INTEGER,
+				bandit_role_name TEXT DEFAULT 'Bandit',
+				spam_trigger_channel_count INTEGER DEFAULT 3,
+				spam_window_seconds INTEGER DEFAULT 15,
+				spam_penalty TEXT DEFAULT 'bandit',
+				spam_recent_join_seconds INTEGER DEFAULT 259200,
+				spam_enabled INTEGER DEFAULT 1
+			)
+		''')
 		conn.commit()
 		conn.close()
+
+	def _default_guild_settings(self):
+		return {
+			"staff_channel_id": None,
+			"bandit_role_name": "Bandit",
+			"spam_trigger_channel_count": 3,
+			"spam_window_seconds": 15,
+			"spam_penalty": "bandit",
+			"spam_recent_join_seconds": 259200,
+			"spam_enabled": 1,
+		}
+
+	def get_guild_settings(self, guild_id):
+		if guild_id in self._settings_cache:
+			return self._settings_cache[guild_id]
+
+		defaults = self._default_guild_settings()
+		conn = sqlite3.connect(self.FILE_NAME)
+		cursor = conn.cursor()
+		cursor.execute('SELECT * FROM guild_settings WHERE guild_id = ?', (guild_id,))
+		row = cursor.fetchone()
+		if not row:
+			conn.close()
+			self._settings_cache[guild_id] = defaults
+			return defaults
+		columns = [col[0] for col in cursor.description]
+		settings = dict(zip(columns, row))
+		conn.close()
+		for key, value in defaults.items():
+			settings.setdefault(key, value)
+		self._settings_cache[guild_id] = settings
+		return settings
+
+	def set_guild_setting(self, guild_id, key, value):
+		allowed_columns = {
+			"staff_channel_id",
+			"bandit_role_name",
+			"spam_trigger_channel_count",
+			"spam_window_seconds",
+			"spam_penalty",
+			"spam_recent_join_seconds",
+			"spam_enabled",
+		}
+		if key not in allowed_columns:
+			return False
+
+		conn = sqlite3.connect(self.FILE_NAME)
+		cursor = conn.cursor()
+		cursor.execute('INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)', (guild_id,))
+		cursor.execute(f'UPDATE guild_settings SET {key} = ? WHERE guild_id = ?', (value, guild_id))
+		conn.commit()
+		conn.close()
+		# Update cache
+		if guild_id in self._settings_cache:
+			self._settings_cache[guild_id][key] = value
+		return True
+
+	def reset_guild_settings(self, guild_id):
+		conn = sqlite3.connect(self.FILE_NAME)
+		cursor = conn.cursor()
+		cursor.execute('DELETE FROM guild_settings WHERE guild_id = ?', (guild_id,))
+		conn.commit()
+		conn.close()
+		if guild_id in self._settings_cache:
+			del self._settings_cache[guild_id]
 
 	async def update_user_in_db(self, user_id, username, display_name, nick, guild_id, roles):
 		try:
