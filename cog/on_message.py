@@ -71,6 +71,9 @@ def get_spam_fingerprint(message):
 
 async def check_cross_channel_spam(message):
 	"""Detect and handle cross-channel spam."""
+	if not message.guild or message.guild.id != HF_GUILD_ID:
+		return False
+
 	# Ignore bot messages and commands
 	if message.author == client.user or message.content.startswith(BOT_PREFIX):
 		return False
@@ -213,7 +216,7 @@ async def on_message(message):
 		return
 
 	# Check for cross-channel spam - if detected, exit early
-	if message.guild and await check_cross_channel_spam(message):
+	if message.guild and message.guild.id == HF_GUILD_ID and await check_cross_channel_spam(message):
 		return
 
 	hf_bot_pattern = re.compile(fr"^(?:{re.escape(client.user.name)}|{re.escape(client.user.mention)})[ \n\t\r]*!+$", re.IGNORECASE)
