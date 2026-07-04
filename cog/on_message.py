@@ -102,20 +102,32 @@ async def check_cross_channel_spam(message):
 	return False
 
 async def handle_spam(message, msg_content):
-	"""Handle spam violation: delete messages, strip roles, apply Bandit role, notify staff."""
+	"""Handle spam violation: delete messages, kick if it's a new account,
+	otherwise strip roles and apply Bandit role.
+	Notify the staff channel with details of the action taken.
+	"""
 	spam_messages = []
 	stripped_roles = []
+	action_taken = "Roles stripped and Bandit role applied"
 
-	# Strip all roles and apply Bandit role
 	try:
 		member = message.guild.get_member(message.author.id)
 		if member:
+			stripped_roles = [role.name for role in member.roles if role != message.guild.default_role]
+
 			bandit_role = discord.utils.get(message.guild.roles, name="Bandit")
 			if bandit_role:
-				stripped_roles = [role.name for role in member.roles if role != message.guild.default_role]
 				await member.edit(roles=[bandit_role], reason="Anti-spam violation: cross-channel spam detected")
-			else:
-				stripped_roles = [role.name for role in member.roles if role != message.guild.default_role]
+			
+			joined_recently = False
+
+			if member.joined_at:
+				# Check if the member joined within the last 3 days (259200 seconds)
+				joined_recently = (discord.utils.utcnow() - member.joined_at).total_seconds() <= 259200
+
+			if joined_recently:
+				await member.kick(reason="Anti-spam violation: new account spam detected")
+				action_taken = "Kicked from server"
 	except discord.Forbidden:
 		pass
 	except Exception:
@@ -143,9 +155,9 @@ async def handle_spam(message, msg_content):
 		pass
 
 	# Send staff notification
-	await notify_staff(message, msg_content, len(spam_messages), stripped_roles)
+	await notify_staff(message, msg_content, len(spam_messages), stripped_roles, action_taken)
 
-async def notify_staff(message, msg_content, message_count, stripped_roles=None):
+async def notify_staff(message, msg_content, message_count, stripped_roles=None, action_taken="Roles stripped and Bandit role applied"):
 	"""Send a notification to the staff channel."""
 	stripped_roles = stripped_roles or []
 	try:
@@ -158,7 +170,7 @@ async def notify_staff(message, msg_content, message_count, stripped_roles=None)
 			)
 			embed.add_field(name="User", value=f"{message.author} (ID: {message.author.id})", inline=False)
 			embed.add_field(name="Spam Messages Deleted", value=str(message_count), inline=True)
-			embed.add_field(name="Action Taken", value="Roles stripped and Bandit role applied", inline=True)
+			embed.add_field(name="Action Taken", value=action_taken, inline=True)
 			embed.add_field(name="Roles Stripped", value=(', '.join(stripped_roles) if stripped_roles else 'None'), inline=False)
 			embed.add_field(name="Message Preview", value=f"```{msg_content[:100]}```", inline=False)
 			
