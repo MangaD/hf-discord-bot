@@ -167,7 +167,17 @@ class Moderation(commands.Cog):
 				return
 			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, role_name)
 
-		elif normalized in {"spam_trigger_channel_count", "spam_window_seconds", "spam_recent_join_seconds"}:
+		elif normalized == "spam_window_seconds":
+			try:
+				num_value = int(value)
+				if num_value < 1 or num_value > 15:
+					raise ValueError
+			except ValueError:
+				await ctx.send("Please provide a positive whole number up to 15.")
+				return
+			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, num_value)
+
+		elif normalized in {"spam_trigger_channel_count", "spam_recent_join_seconds"}:
 			try:
 				num_value = int(value)
 				if num_value < 1:

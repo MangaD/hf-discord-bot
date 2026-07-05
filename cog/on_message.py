@@ -1,6 +1,7 @@
 from .common import *
 import re
 import asyncio
+import io
 from gtts import gTTS
 from io import BytesIO
 from .utils.FFmpegPCMAudioGTTS import FFmpegPCMAudioGTTS
@@ -22,21 +23,23 @@ media_url_patterns = [
 	r"https:\/\/(?:www\.)?deviantart.com\/.+"                        # DeviantArt
 ]
 
-# Anti-spam tracking: {user_id: [(message_content, channel_id, timestamp), ...]}
+# Anti-spam tracking: {user_id: [(message_content, guild_id, channel_id, timestamp), ...]}
 user_message_history = defaultdict(list)
 
 @tasks.loop(seconds=15)
 async def cleanup_old_messages():
-	"""Periodically remove message records older than 15 seconds."""
+	"""Periodically remove message records older than their guild's configured retention window."""
 	try:
 		current_time = time()
 		for user_id in list(user_message_history.keys()):
 			#print(f"cleanup_old_messages {user_id}")
-			user_message_history[user_id] = [
-				(content, channel_id, ts)
-				for content, channel_id, ts in user_message_history[user_id]
-				if current_time - ts < 15
-			]
+			filtered_entries = []
+			for content, guild_id, channel_id, ts in user_message_history[user_id]:
+				guild_settings = MyGlobals.db.get_guild_settings(guild_id)
+				window_seconds = min(guild_settings.get("spam_window_seconds", 15), 15)
+				if current_time - ts < window_seconds:
+					filtered_entries.append((content, guild_id, channel_id, ts))
+			user_message_history[user_id] = filtered_entries
 			if not user_message_history[user_id]:
 				del user_message_history[user_id]
 	except asyncio.CancelledError:
@@ -86,19 +89,21 @@ async def check_cross_channel_spam(message):
 	user_id = message.author.id
 	msg_content = get_spam_fingerprint(message)
 
+	window_seconds = min(settings.get("spam_window_seconds", 15), 15)
+
 	# Add current message to tracking
-	user_message_history[user_id].append((msg_content, message.channel.id, current_time))
+	user_message_history[user_id].append((msg_content, message.guild.id, message.channel.id, current_time))
 
 	# Check for spam using guild-configured window and trigger count
 	recent_messages = [
-		(content, channel_id, ts)
-		for content, channel_id, ts in user_message_history[user_id]
-		if current_time - ts <= settings.get("spam_window_seconds", 15)
+		(content, guild_id, channel_id, ts)
+		for content, guild_id, channel_id, ts in user_message_history[user_id]
+		if guild_id == message.guild.id and current_time - ts <= window_seconds
 	]
 
 	message_channels = defaultdict(set)
-	for content, channel_id, _ in recent_messages:
-		if content == msg_content:
+	for content, guild_id, channel_id, _ in recent_messages:
+		if content == msg_content and guild_id == message.guild.id:
 			message_channels[content].add(channel_id)
 
 	trigger_count = settings.get("spam_trigger_channel_count", 3)
