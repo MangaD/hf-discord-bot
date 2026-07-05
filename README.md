@@ -83,6 +83,10 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **setavatar:** Changes the bot's avatar in the current guild.
   - **setbanner:** Changes the bot's banner in the current guild.
   - **setbio:** Changes the bot's bio/about me section in the current guild.
+  - **setaccountnick:** Changes the bot account username (owner only).
+  - **setaccountavatar:** Changes the bot account avatar (owner only).
+  - **setaccountbanner:** Changes the bot account banner (owner only).
+  - **setaccountbio:** Reports that account bio changes are currently unsupported by the installed Discord library (owner only).
 
 - Utilities
   - **ud:** Look up a word on UrbanDictionary.

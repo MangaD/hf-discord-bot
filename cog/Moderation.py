@@ -297,6 +297,131 @@ class Moderation(commands.Cog):
 		else:
 			await ctx.channel.send(f"An unexpected error occurred: {error}")
 
+	async def _ensure_owner(self, ctx):
+		if ctx.author.id != MANGAD_ID:
+			await ctx.send(f"**{ctx.author.display_name}:** You lack permission to use this command. :angry:")
+			return False
+		return True
+
+	async def _fetch_image_bytes(self, ctx, image_url: str = None):
+		image_data = None
+		if image_url is None:
+			if ctx.message.attachments:
+				image_data = await ctx.message.attachments[0].read()
+			elif ctx.message.reference:
+				replied_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+				if replied_msg.attachments:
+					image_data = await replied_msg.attachments[0].read()
+				else:
+					await ctx.send(f"**{ctx.author.display_name}:** No image found in the replied message.")
+					return None
+			else:
+				await ctx.send(f"**{ctx.author.display_name}:** Please provide an image URL, attach an image, or reply to a message with an image.")
+				return None
+		else:
+			try:
+				async with aiohttp.ClientSession() as session:
+					async with session.get(image_url) as resp:
+						if resp.status != 200:
+							await ctx.send(f"**{ctx.author.display_name}:** Failed to download image from URL.")
+							return None
+						image_data = await resp.read()
+			except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+				await ctx.send(f"**{ctx.author.display_name}:** Failed to download image: {e}")
+				return None
+		return image_data
+
+	@commands.command(
+		description=(
+			"Changes the bot account's username.\n"
+			"Usage: `.setaccountnick [name]`\n"
+			"This command can only be used by the bot owner."
+		)
+	)
+	async def setaccountnick(self, ctx, *, name: str = None):
+		"""Set the bot account's username."""
+		if not await self._ensure_owner(ctx):
+			return
+		if name is None:
+			await ctx.send(f"**{ctx.author.display_name}:** Please provide a username.")
+			return
+		if len(name) > 32:
+			await ctx.send(f"**{ctx.author.display_name}:** Username must be 32 characters or less.")
+			return
+		try:
+			await self.client.user.edit(username=name)
+		except discord.Forbidden:
+			await ctx.send(f"**{ctx.author.display_name}:** I lack permission to change my username!")
+		except discord.HTTPException as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An error occurred while changing username: {e}")
+		except Exception as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An unexpected error occurred: {e}")
+
+	@commands.command(
+		description=(
+			"Changes the bot account's avatar.\n"
+			"Usage:\n"
+			"  `.setaccountavatar [image_url]` - Provide a direct image URL\n"
+			"  `.setaccountavatar` with an attachment - Upload an image with the command\n"
+			"  Reply to a message with an image, then use `.setaccountavatar` - Extract from replied message\n"
+			"This command can only be used by the bot owner."
+		)
+	)
+	async def setaccountavatar(self, ctx, image_url: str = None):
+		"""Set the bot account's avatar."""
+		if not await self._ensure_owner(ctx):
+			return
+		avatar_data = await self._fetch_image_bytes(ctx, image_url)
+		if avatar_data is None:
+			return
+		try:
+			await self.client.user.edit(avatar=avatar_data)
+		except discord.Forbidden:
+			await ctx.send(f"**{ctx.author.display_name}:** I lack permission to change my avatar!")
+		except discord.HTTPException as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An error occurred while changing avatar: {e}")
+		except Exception as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An unexpected error occurred: {e}")
+
+	@commands.command(
+		description=(
+			"Changes the bot account's banner.\n"
+			"Usage:\n"
+			"  `.setaccountbanner [image_url]` - Provide a direct image URL\n"
+			"  `.setaccountbanner` with an attachment - Upload an image with the command\n"
+			"  Reply to a message with an image, then use `.setaccountbanner` - Extract from replied message\n"
+			"This command can only be used by the bot owner."
+		)
+	)
+	async def setaccountbanner(self, ctx, image_url: str = None):
+		"""Set the bot account's banner."""
+		if not await self._ensure_owner(ctx):
+			return
+		banner_data = await self._fetch_image_bytes(ctx, image_url)
+		if banner_data is None:
+			return
+		try:
+			await self.client.user.edit(banner=banner_data)
+		except discord.Forbidden:
+			await ctx.send(f"**{ctx.author.display_name}:** I lack permission to change my banner!")
+		except discord.HTTPException as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An error occurred while changing banner: {e}")
+		except Exception as e:
+			await ctx.send(f"**{ctx.author.display_name}:** An unexpected error occurred: {e}")
+
+	@commands.command(
+		description=(
+			"Changes the bot account's bio (about me).\n"
+			"Usage: `.setaccountbio [text]`\n"
+			"This command can only be used by the bot owner."
+		)
+	)
+	async def setaccountbio(self, ctx, *, text: str = None):
+		"""Inform the user that account bio changes are not supported by the current Discord library version."""
+		if not await self._ensure_owner(ctx):
+			return
+		await ctx.send("Changing the bot account bio is not supported by the current Discord library version.")
+
 	@commands.command(
 		description=(
 			"Changes the bot's display name (nickname) in the current guild.\n"
@@ -352,36 +477,8 @@ class Moderation(commands.Cog):
 			await ctx.channel.send(f"**{ctx.author.display_name}:** You lack permission to use this command. :angry:")
 			return
 		
-		avatar_data = None
-		
-		# Try to get image from URL or replied message
-		if image_url is None:
-			if ctx.message.attachments:
-				avatar_data = await ctx.message.attachments[0].read()
-			elif ctx.message.reference:
-				replied_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-				if replied_msg.attachments:
-					avatar_data = await replied_msg.attachments[0].read()
-				else:
-					await ctx.send(f"**{ctx.author.display_name}:** No image found in the replied message.")
-					return
-			else:
-				await ctx.send(f"**{ctx.author.display_name}:** Please provide an image URL, attach an image, or reply to a message with an image.")
-				return
-		else:
-			try:
-				async with aiohttp.ClientSession() as session:
-					async with session.get(image_url) as resp:
-						if resp.status != 200:
-							await ctx.send(f"**{ctx.author.display_name}:** Failed to download image from URL.")
-							return
-						avatar_data = await resp.read()
-			except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-				await ctx.send(f"**{ctx.author.display_name}:** Failed to download image: {e}")
-				return
-		
+		avatar_data = await self._fetch_image_bytes(ctx, image_url)
 		if avatar_data is None:
-			await ctx.send(f"**{ctx.author.display_name}:** No image data found.")
 			return
 		
 		try:
@@ -412,36 +509,8 @@ class Moderation(commands.Cog):
 			await ctx.channel.send(f"**{ctx.author.display_name}:** You lack permission to use this command. :angry:")
 			return
 		
-		banner_data = None
-		
-		# Try to get image from URL or replied message
-		if image_url is None:
-			if ctx.message.attachments:
-				banner_data = await ctx.message.attachments[0].read()
-			elif ctx.message.reference:
-				replied_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-				if replied_msg.attachments:
-					banner_data = await replied_msg.attachments[0].read()
-				else:
-					await ctx.send(f"**{ctx.author.display_name}:** No image found in the replied message.")
-					return
-			else:
-				await ctx.send(f"**{ctx.author.display_name}:** Please provide an image URL, attach an image, or reply to a message with an image.")
-				return
-		else:
-			try:
-				async with aiohttp.ClientSession() as session:
-					async with session.get(image_url) as resp:
-						if resp.status != 200:
-							await ctx.send(f"**{ctx.author.display_name}:** Failed to download image from URL.")
-							return
-						banner_data = await resp.read()
-			except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-				await ctx.send(f"**{ctx.author.display_name}:** Failed to download image: {e}")
-				return
-		
+		banner_data = await self._fetch_image_bytes(ctx, image_url)
 		if banner_data is None:
-			await ctx.send(f"**{ctx.author.display_name}:** No image data found.")
 			return
 		
 		try:
