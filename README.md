@@ -115,7 +115,7 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **avatar:** Get the avatar image of a user.
   - **banner:** Get the profile banner image of a user.
   - **accent:** Get the accent color of a user.
-  - **status:** Get the current status of a user.
+  - **userstatus:** Get the current status of a user.
   - **activity:** Get the current activity of a user.
   - **servericon:** Displays the icon of the guild.
   - **serversplash:** Displays the splash image of the guild.

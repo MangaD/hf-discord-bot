@@ -63,8 +63,8 @@ class Discord(commands.Cog):
 		if isinstance(error, commands.MemberNotFound):
 			await ctx.channel.send(f"**{ctx.author.display_name}:** I could not find that user.")
 
-	@commands.command(description="Get a user's current status. Usage: `.status [nickname]`")
-	async def status(self, ctx, *, user: discord.Member = None):
+	@commands.command(aliases=['ustatus'], description="Get a user's current status. Usage: `.userstatus [nickname]`")
+	async def userstatus(self, ctx, *, user: discord.Member = None):
 		"""Display the current status of the specified user or the command caller."""
 		user = user or ctx.author
 		status_map = {
@@ -76,8 +76,8 @@ class Discord(commands.Cog):
 		status_text = status_map.get(getattr(user, "status", None), "Unknown")
 		await ctx.channel.send(f"**{user.display_name}'s status:** {status_text}")
 
-	@status.error
-	async def status_error(self, ctx, error):
+	@userstatus.error
+	async def userstatus_error(self, ctx, error):
 		if isinstance(error, commands.MemberNotFound):
 			await ctx.channel.send(f"**{ctx.author.display_name}:** I could not find that user.")
 
