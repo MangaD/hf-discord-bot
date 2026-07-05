@@ -109,13 +109,20 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
 - Discord
   - **uptime:** Returns the uptime of HF Bot.
   - **avatar:** Get the avatar image of a user.
+  - **banner:** Get the profile banner image of a user.
+  - **accent:** Get the accent color of a user.
+  - **status:** Get the current status of a user.
+  - **activity:** Get the current activity of a user.
+  - **servericon:** Displays the icon of the guild.
   - **serversplash:** Displays the splash image of the guild.
   - **serverbanner:** Displays the banner image of the guild.
   - **serverdiscoverysplash:** Displays the discovery splash image of the guild.
   - **serverinfo:** Shows info related to the guild.
   - **channelinfo:** Shows info related to a channel.
-  - **userinfo:** Shows info related to a user.
+  - **userinfo:** Shows a detailed profile-style summary for a user, including avatar, banner, status, activity, accent color, and roles.
   - **botinfo:** Shows info about the bot.
+  - **emoji:** Displays a custom emoji image.
+  - **roleicon:** Displays the icon of a role.
 
 ### To do
 
