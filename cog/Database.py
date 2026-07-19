@@ -26,7 +26,7 @@ class Database:
 			CREATE TABLE IF NOT EXISTS guild_settings (
 				guild_id INTEGER PRIMARY KEY,
 				staff_channel_id INTEGER,
-				bandit_role_name TEXT DEFAULT 'Bandit',
+				bandit_role_id TEXT DEFAULT 'Bandit',
 				spam_trigger_channel_count INTEGER DEFAULT 3,
 				spam_window_seconds INTEGER DEFAULT 15,
 				spam_penalty TEXT DEFAULT 'bandit',
@@ -40,7 +40,7 @@ class Database:
 	def _default_guild_settings(self):
 		return {
 			"staff_channel_id": None,
-			"bandit_role_name": "Bandit",
+			"bandit_role_id": None,
 			"spam_trigger_channel_count": 3,
 			"spam_window_seconds": 15,
 			"spam_penalty": "bandit",
@@ -72,7 +72,7 @@ class Database:
 	def set_guild_setting(self, guild_id, key, value):
 		allowed_columns = {
 			"staff_channel_id",
-			"bandit_role_name",
+			"bandit_role_id",
 			"spam_trigger_channel_count",
 			"spam_window_seconds",
 			"spam_penalty",

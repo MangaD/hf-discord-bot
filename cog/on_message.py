@@ -6,6 +6,7 @@ from gtts import gTTS
 from io import BytesIO
 from .utils.FFmpegPCMAudioGTTS import FFmpegPCMAudioGTTS
 from collections import defaultdict
+from datetime import timedelta
 from time import time
 from discord.ext import tasks
 
@@ -125,8 +126,12 @@ async def handle_spam(message, msg_content, settings):
 		if member:
 			stripped_roles = [role.name for role in member.roles if role != message.guild.default_role]
 
-			bandit_role_name = settings.get("bandit_role_name", "Bandit")
-			bandit_role = discord.utils.get(message.guild.roles, name=bandit_role_name)
+			bandit_role = None
+			if settings:
+				bandit_role_id = settings.get("bandit_role_id")
+				if bandit_role_id:
+					bandit_role = message.guild.get_role(int(bandit_role_id))
+
 			penalty = settings.get("spam_penalty", "bandit")
 			joined_recently = False
 
@@ -148,8 +153,9 @@ async def handle_spam(message, msg_content, settings):
 				await member.edit(roles=[bandit_role], reason="Anti-spam violation: cross-channel spam detected")
 				action_taken = f"Roles stripped and {bandit_role.name} role applied"
 			else:
-				await member.edit(roles=[], reason="Anti-spam violation: cross-channel spam detected")
-				action_taken = "Roles stripped"
+				#await member.edit(roles=[], reason="Anti-spam violation: cross-channel spam detected")
+				await member.timeout(timedelta(hours=24), reason="Anti-spam violation: cross-channel spam detected")
+				action_taken = "Timed out for 24 hours"
 	except discord.Forbidden:
 		pass
 	except Exception:
@@ -186,12 +192,10 @@ async def notify_staff(message, msg_content, message_count, stripped_roles=None,
 	stripped_roles = stripped_roles or []
 	try:
 		staff_channel = None
-		if settings is not None:
+		if settings:
 			staff_channel_id = settings.get("staff_channel_id")
 			if staff_channel_id:
 				staff_channel = message.guild.get_channel(staff_channel_id)
-		if not staff_channel:
-			staff_channel = client.get_channel(STAFF_CHANNEL_ID)
 		if staff_channel:
 			embed = discord.Embed(
 				title="🚨 Cross-Channel Spam Detected",

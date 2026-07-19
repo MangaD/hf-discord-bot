@@ -79,14 +79,167 @@ class Moderation(commands.Cog):
 	)
 	@commands.has_permissions(administrator=True)
 	async def spamconfig(self, ctx):
-		"""View or update this server's anti-spam settings."""
+		"""Display detailed help for the cross-channel anti-spam system."""
+
 		if ctx.guild is None:
 			await ctx.send("This command can only be used in a server.")
 			return
-		await ctx.send(
-			"Usage: `.spamconfig show` | `.spamconfig set <option> <value>` | `.spamconfig reset`\n"
-			"Available options: staff_channel, bandit_role, trigger_count, window_seconds, penalty, recent_join_seconds, enabled"
+
+		embed = discord.Embed(
+			title="Cross-Channel Spam Configuration",
+			description=(
+				"This system detects users who post the same message in multiple "
+				"channels within a short period of time.\n\n"
+				"When a violation is detected, matching recent messages are deleted, "
+				"the configured penalty is applied, and a report is sent to the "
+				"configured staff channel."
+			),
+			color=discord.Color.blue()
 		)
+
+		embed.add_field(
+			name="Commands",
+			value=(
+				"`​.​spamconfig show`\n"
+				"Shows the server's current anti-spam configuration.\n\n"
+				"`​.​spamconfig set <option> <value>`\n"
+				"Changes one configuration option.\n\n"
+				"`​.​spamconfig reset`\n"
+				"Restores all anti-spam options to their defaults."
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="How detection works",
+			value=(
+				"1. The bot records each non-command message sent by a user.\n"
+				"2. It checks whether the same message was posted in different channels.\n"
+				"3. The messages must be sent within `window_seconds`.\n"
+				"4. The number of distinct channels must reach `trigger_count`.\n"
+				"5. Matching recent messages are deleted and the penalty is applied.\n\n"
+				"Repeated messages in only one channel do not trigger this "
+				"cross-channel detector."
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="`enabled`",
+			value=(
+				"Turns cross-channel spam detection on or off.\n"
+				"Accepted values: `on`, `off`, `yes`, `no`, `true`, `false`, `1`, `0`\n"
+				"Default: `on`\n"
+				"Example: `.spamconfig set enabled on`"
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="`staff_channel`",
+			value=(
+				"The channel where spam reports are sent.\n"
+				"Accepts a channel mention, channel ID, or exact channel name.\n"
+				"Default: not configured\n"
+				"Examples:\n"
+				"`.spamconfig set staff_channel #staff-log`\n"
+				"`.spamconfig set staff_channel staff-log`"
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="`trigger_count`",
+			value=(
+				"The number of different channels containing the same message "
+				"required to trigger the detector.\n"
+				"Must be a positive whole number.\n"
+				"Default: `3`\n"
+				"Example: `.spamconfig set trigger_count 3`"
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="`window_seconds`",
+			value=(
+				"The time period during which matching cross-channel messages count "
+				"toward a violation.\n"
+				"Accepted range: `1` to `15` seconds\n"
+				"Default: `15`\n"
+				"Example: `.spamconfig set window_seconds 10`"
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="`penalty`",
+			value=(
+				"Controls what happens when cross-channel spam is detected.\n\n"
+				"`bandit` — Applies the configured Bandit role. If no valid Bandit "
+				"role is configured, the user is timed out for 24 hours.\n\n"
+				"`kick` — Always kicks the user.\n\n"
+				"`kick_recent` — Kicks users who joined recently. Other users receive "
+				"the Bandit role, or a 24-hour timeout if that role is unavailable.\n\n"
+				"`ban` — Always bans the user.\n\n"
+				"`ban_recent` — Bans users who joined recently. Other users receive "
+				"the Bandit role, or a 24-hour timeout if that role is unavailable.\n\n"
+				"Default: `bandit`\n"
+				"Example: `.spamconfig set penalty kick_recent`"
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="`bandit_role`",
+			value=(
+				"The role applied by the `bandit` penalty and as the fallback for "
+				"`kick_recent` or `ban_recent` when the user is not considered recent.\n"
+				"The user's existing assignable roles are replaced by this role.\n"
+				"Accepts a role mention, role ID, or exact role name.\n"
+				"Default: not configured\n"
+				"Examples:\n"
+				"`.spamconfig set bandit_role @Bandit`\n"
+				"`.spamconfig set bandit_role Bandit`"
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="`recent_join_seconds`",
+			value=(
+				"Defines how long after joining a user is considered recent for "
+				"`kick_recent` and `ban_recent`.\n"
+				"Must be a positive whole number.\n"
+				"Default: `259200` seconds, which is 3 days.\n"
+				"Examples:\n"
+				"`.spamconfig set recent_join_seconds 86400` — 1 day\n"
+				"`.spamconfig set recent_join_seconds 604800` — 7 days"
+			),
+			inline=False
+		)
+
+		embed.add_field(
+			name="Recommended setup",
+			value=(
+				"```text\n"
+				".spamconfig set staff_channel #staff-log\n"
+				".spamconfig set bandit_role @Bandit\n"
+				".spamconfig set trigger_count 3\n"
+				".spamconfig set window_seconds 15\n"
+				".spamconfig set penalty kick_recent\n"
+				".spamconfig set recent_join_seconds 259200\n"
+				".spamconfig set enabled on\n"
+				"```"
+			),
+			inline=False
+		)
+
+		embed.set_footer(
+			text="Administrators only • Use `.spamconfig show` to view the values currently active in this server."
+		)
+
+		await ctx.send(embed=embed)
 
 	@spamconfig.command(name="show")
 	@commands.has_permissions(administrator=True)
@@ -102,7 +255,9 @@ class Moderation(commands.Cog):
 		staff_channel = None
 		if settings.get("staff_channel_id"):
 			staff_channel = ctx.guild.get_channel(settings["staff_channel_id"])
-		bandit_role = discord.utils.get(ctx.guild.roles, name=settings.get("bandit_role_name", "Bandit"))
+
+		bandit_role_id = settings.get("bandit_role_id")
+		bandit_role = ctx.guild.get_role(int(bandit_role_id)) if bandit_role_id else None
 
 		embed = discord.Embed(
 			title="Guild Spam Configuration",
@@ -110,7 +265,7 @@ class Moderation(commands.Cog):
 		)
 		embed.add_field(name="Enabled", value="Yes" if settings.get("spam_enabled", 1) else "No", inline=True)
 		embed.add_field(name="Staff Channel", value=staff_channel.mention if staff_channel else "Not configured", inline=True)
-		embed.add_field(name="Bandit Role", value=bandit_role.name if bandit_role else settings.get("bandit_role_name", "Bandit"), inline=True)
+		embed.add_field(name="Bandit Role", value=bandit_role.mention if bandit_role else "Not configured", inline=True)
 		embed.add_field(name="Trigger Count", value=str(settings.get("spam_trigger_channel_count", 3)), inline=True)
 		embed.add_field(name="Window Seconds", value=str(settings.get("spam_window_seconds", 15)), inline=True)
 		embed.add_field(name="Penalty", value=str(settings.get("spam_penalty", "bandit")), inline=True)
@@ -127,13 +282,13 @@ class Moderation(commands.Cog):
 			await ctx.send(f"**{ctx.author.display_name}:** You must be a server administrator to use this command.")
 			return
 		if key is None or value is None:
-			await ctx.send("Usage: `.spamconfig set <option> <value>`")
+			await ctx.invoke(self.spamconfig)
 			return
 
 		key = key.lower()
 		normalized = {
 			"staff_channel": "staff_channel_id",
-			"bandit_role": "bandit_role_name",
+			"bandit_role": "bandit_role_id",
 			"trigger_count": "spam_trigger_channel_count",
 			"window_seconds": "spam_window_seconds",
 			"penalty": "spam_penalty",
@@ -142,30 +297,99 @@ class Moderation(commands.Cog):
 		}.get(key)
 
 		if normalized is None:
-			await ctx.send("Invalid option. Valid options: staff_channel, bandit_role, trigger_count, window_seconds, penalty, recent_join_seconds, enabled")
+			await ctx.send(
+				"Unknown configuration option.\n\n"
+				"Use `.spamconfig` to view all available settings and what they do, "
+				"or `.spamconfig show` to view the current configuration."
+			)
 			return
 
-		if normalized == "staff_channel_id":
-			channel_id = None
-			if value.startswith("<#") and value.endswith(">"):
-				channel_id = int(value[2:-1])
-			else:
-				try:
-					channel_id = int(value)
-				except ValueError:
-					await ctx.send("Please provide a valid channel mention or ID.")
-					return
-			if not ctx.guild.get_channel(channel_id):
-				await ctx.send("That channel was not found in this server.")
-				return
-			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, channel_id)
+		# Default confirmation value for ordinary settings.
+		display_value = value
 
-		elif normalized == "bandit_role_name":
-			role_name = value.strip()
-			if not role_name:
-				await ctx.send("Please provide a valid role name.")
+		if normalized == "staff_channel_id":
+			channel_input = value.strip()
+
+			if not channel_input:
+				await ctx.send("Please provide a valid channel mention, name, or ID.")
 				return
-			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, role_name)
+
+			channel = None
+
+			# Case 1: Channel mention (<#123456789>)
+			mention_match = re.fullmatch(r"<#(\d+)>", channel_input)
+
+			if mention_match:
+				channel_id = int(mention_match.group(1))
+				channel = ctx.guild.get_channel(channel_id)
+
+			# Case 2: Raw channel ID
+			elif channel_input.isdigit():
+				channel_id = int(channel_input)
+				channel = ctx.guild.get_channel(channel_id)
+
+			# Case 3: Exact channel name, with optional leading #
+			else:
+				channel_name = channel_input.removeprefix("#")
+				channel = discord.utils.get(ctx.guild.channels, name=channel_name)
+
+			if channel is None:
+				await ctx.send(
+					"That channel was not found in this server. "
+					"Please mention it, give its ID, or provide its exact name."
+				)
+				return
+
+			# Optional: only permit message-capable server channels
+			if not isinstance(
+				channel,
+				(
+					discord.TextChannel,
+					discord.ForumChannel,
+					discord.VoiceChannel,
+					discord.StageChannel,
+				),
+			):
+				await ctx.send("That channel cannot be used as the staff channel.")
+				return
+
+			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, channel.id)
+
+			# Displays as a clickable Discord channel mention.
+			display_value = channel.mention
+
+		elif normalized == "bandit_role_id":
+			role_input = value.strip()
+			if not role_input:
+				await ctx.send("Please provide a valid role mention, name, or ID.")
+				return
+
+			role = None
+
+			# Case 1: Role mention (<@&123456789>)
+			mention_match = re.search(r'<@&(\d+)>', role_input)
+			if mention_match:
+				role_id = int(mention_match.group(1))
+				role = ctx.guild.get_role(role_id)
+
+			# Case 2: Raw ID
+			elif role_input.isdigit():
+				role_id = int(role_input)
+				role = ctx.guild.get_role(role_id)
+
+			# Case 3: Role name
+			else:
+				role = discord.utils.get(ctx.guild.roles, name=role_input)
+
+			if role is None:
+				await ctx.send("That role was not found in this server. Please mention it, give its ID, or exact name.")
+				return
+
+			# Store the ID
+			MyGlobals.db.set_guild_setting(ctx.guild.id, "bandit_role_id", role.id)
+
+			# Displays as a clickable Discord role mention.
+			display_value = role.mention
 
 		elif normalized == "spam_window_seconds":
 			try:
@@ -205,7 +429,7 @@ class Moderation(commands.Cog):
 				return
 			MyGlobals.db.set_guild_setting(ctx.guild.id, normalized, stored)
 
-		await ctx.send(f"Updated spam setting `{key}` to `{value}`.")
+		await ctx.send(f"Updated spam setting `{key}` to {display_value}.")
 
 	@spamconfig.command(name="reset")
 	@commands.has_permissions(administrator=True)
