@@ -1,6 +1,7 @@
 import sqlite3
 import asyncio
 import discord
+import json
 
 class Database:
 
@@ -11,31 +12,71 @@ class Database:
 
 	def init_db(self):
 		conn = sqlite3.connect(self.FILE_NAME)
-		cursor = conn.cursor()
-		cursor.execute('''
-			CREATE TABLE IF NOT EXISTS users (
-				user_id INTEGER PRIMARY KEY,
-				username TEXT NOT NULL,
-				display_name TEXT NOT NULL,
-				nick TEXT,
-				guild_id INTEGER NOT NULL,
-				roles TEXT NOT NULL
-			)
-		''')
-		cursor.execute('''
-			CREATE TABLE IF NOT EXISTS guild_settings (
-				guild_id INTEGER PRIMARY KEY,
-				staff_channel_id INTEGER,
-				bandit_role_id TEXT DEFAULT 'Bandit',
-				spam_trigger_channel_count INTEGER DEFAULT 3,
-				spam_window_seconds INTEGER DEFAULT 15,
-				spam_penalty TEXT DEFAULT 'bandit',
-				spam_recent_join_seconds INTEGER DEFAULT 259200,
-				spam_enabled INTEGER DEFAULT 1
-			)
-		''')
-		conn.commit()
-		conn.close()
+		try:
+			with conn:
+				cursor = conn.cursor()
+				cursor.execute('''
+					CREATE TABLE IF NOT EXISTS users (
+						user_id INTEGER NOT NULL,
+						username TEXT NOT NULL,
+						display_name TEXT NOT NULL,
+						nick TEXT,
+						guild_id INTEGER NOT NULL,
+						roles TEXT NOT NULL,
+						PRIMARY KEY (user_id, guild_id)
+					)
+				''')
+
+				cursor.execute('''
+					CREATE TABLE IF NOT EXISTS guild_settings (
+						guild_id INTEGER PRIMARY KEY,
+						staff_channel_id INTEGER,
+						bandit_role_id TEXT DEFAULT 'Bandit',
+						spam_trigger_channel_count INTEGER DEFAULT 3,
+						spam_window_seconds INTEGER DEFAULT 15,
+						spam_penalty TEXT DEFAULT 'bandit',
+						spam_recent_join_seconds INTEGER DEFAULT 259200,
+						spam_enabled INTEGER DEFAULT 1
+					)
+				''')
+				cursor.execute('''
+					CREATE TABLE IF NOT EXISTS guild_backups (
+						guild_id INTEGER PRIMARY KEY,
+						created_at TEXT NOT NULL,
+						snapshot_json TEXT NOT NULL
+					)
+				''')
+		finally:
+			conn.close()
+
+	def save_guild_backup(self, guild_id, created_at, snapshot, users):
+		conn = sqlite3.connect(self.FILE_NAME)
+		try:
+			with conn:
+				conn.execute('DELETE FROM users WHERE guild_id = ?', (guild_id,))
+				conn.executemany('''
+					INSERT INTO users (user_id, username, display_name, nick, guild_id, roles)
+					VALUES (?, ?, ?, ?, ?, ?)
+				''', users)
+				conn.execute('''
+					INSERT OR REPLACE INTO guild_backups (guild_id, created_at, snapshot_json)
+					VALUES (?, ?, ?)
+				''', (guild_id, created_at, json.dumps(snapshot)))
+		finally:
+			conn.close()
+
+	def get_guild_backup(self, guild_id):
+		conn = sqlite3.connect(self.FILE_NAME)
+		try:
+			row = conn.execute(
+				'SELECT created_at, snapshot_json FROM guild_backups WHERE guild_id = ?',
+				(guild_id,)
+			).fetchone()
+		finally:
+			conn.close()
+		if row is None:
+			return None
+		return row[0], json.loads(row[1])
 
 	def _default_guild_settings(self):
 		return {
@@ -190,47 +231,44 @@ class Database:
 			pass
 
 	async def restore_user_data(self, member):
-		notification_channel = self.client.get_channel("1305142334286991460")
 		try:
-			guild = self.client.get_guild(member.guild.id)
+			guild = member.guild
 			if not guild.me.guild_permissions.manage_roles or not guild.me.guild_permissions.manage_nicknames:
-				#await notification_channel.send(f"Missing permissions to restore roles/nickname for {member} in guild {member.guild.id}")
 				return False
 
 			if member.top_role and member.top_role >= guild.me.top_role:
-				#await notification_channel.send(f"User's highest role is above or equal to mine for {member} in guild {member.guild.id}")
 				return False
 
-			conn = sqlite3.connect(self.FILE_NAME)
-			cursor = conn.cursor()
-			cursor.execute('SELECT roles, nick FROM users WHERE user_id = ? AND guild_id = ?', (member.id, member.guild.id))
-			result = cursor.fetchone()
+			with sqlite3.connect(self.FILE_NAME) as conn:
+				result = conn.execute(
+					'SELECT roles, nick FROM users WHERE user_id = ? AND guild_id = ?',
+					(member.id, member.guild.id)
+				).fetchone()
 
 			if result:
 				roles_str, nick = result
+				backup = self.get_guild_backup(member.guild.id)
+				saved_role_names = {
+					role["id"]: role["name"]
+					for role in backup[1]["roles"]
+				} if backup else {}
+				roles = []
 				if roles_str:
-					bandit_role = discord.utils.get(member.guild.roles, name="Bandit")
-					role_ids = roles_str.split(',')
-					roles = [guild.get_role(int(rid)) for rid in role_ids if guild.get_role(int(rid))]
-					if roles:
-						if bandit_role in roles:
-							await member.edit(roles=[bandit_role], reason="Restoring bandit role")
-						else:
-							await member.edit(roles=roles, reason="Restoring roles from database")
-				if nick:
-					await member.edit(nick=nick, reason="Restoring nickname from database")
-				conn.commit()
-				conn.close()
-				#await notification_channel.send(f"Restored roles and nickname for {member} in guild {member.guild.id}")
+					for role_id in (int(value) for value in roles_str.split(',')):
+						role = guild.get_role(role_id)
+						if role is None and role_id in saved_role_names:
+							role = discord.utils.get(guild.roles, name=saved_role_names[role_id])
+						if role is not None:
+							roles.append(role)
+				bandit_role = discord.utils.get(member.guild.roles, name="Bandit")
+				if bandit_role in roles:
+					roles = [bandit_role]
+				await member.edit(roles=roles, nick=nick, reason="Restoring member data from backup")
 				return True
-			conn.close()
-			return False
+			return None
 		except discord.Forbidden:
-			#await notification_channel.send(f"Missing permissions to edit roles/nickname for {member} in guild {member.guild.id}")
 			return False
 		except sqlite3.Error as e:
-			#await notification_channel.send(f"Database error for {member} in guild {member.guild.id}: {e}")
 			return False
 		except discord.HTTPException as e:
-			#await notification_channel.send(f"Discord API error for {member} in guild {member.guild.id}: {e}")
 			return False

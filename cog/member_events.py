@@ -66,53 +66,39 @@ async def on_member_remove(member: discord.Member):
 async def on_member_join(member):
 	"""Handle events when a member joins the server."""
 
-	if member.guild.id != HF_GUILD_ID:
-		return  # Exit if the member is not joining the Hero Fighter guild
+	if member.guild.id == HF_GUILD_ID:
+		notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
+		embed = discord.Embed(
+			title="Member Joined",
+			description=f"Welcome {member.mention} to the server!",
+			color=discord.Color.green()
+		)
+		embed.set_thumbnail(url=member.display_avatar.url)
+		embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
+		embed.add_field(name="Account Created", value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"), inline=True)
+		embed.set_footer(text="New Member", icon_url=ICON_URL)
+		await notification_channel.send(embed=embed)
 
-	"""Log member join events."""
-	notification_channel = client.get_channel(NOTIFICATIONS_CHANNEL_ID)
+		welcome_channel = client.get_channel(WELCOME_CHANNEL_ID)
+		intro_channel = client.get_channel(INTRODUCTIONS_CHANNEL_ID)
+		if await has_already_introduced(member):
+			await welcome_channel.send(f"Welcome back, {member.mention}!")
+		else:
+			await welcome_channel.send(f"Hello {member.mention}! Please introduce yourself in {intro_channel.mention}. :wink:")
 
-	embed = discord.Embed(
-		title="Member Joined",
-		description=f"Welcome {member.mention} to the server!",
-		color=discord.Color.green()
-	)
-	embed.set_thumbnail(url=member.display_avatar.url)
-	embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
-	embed.add_field(name="Account Created", value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"), inline=True)
-	embed.set_footer(text="New Member", icon_url=ICON_URL)
-
-	await notification_channel.send(embed=embed)
-
-	# Old code when using temporary memory to save the bandit role
-	# Assign the "Bandit" role if the user is in the muted users list
-	#if member.id in MyGlobals.user_roles:
-	#	await assign_role(member, "Bandit", "Muted member rejoined the server.")
-	#	return
-
-	# Greet the member in the 'welcome' channel
-	welcome_channel = client.get_channel(WELCOME_CHANNEL_ID)
-	intro_channel = client.get_channel(INTRODUCTIONS_CHANNEL_ID)
-	if await has_already_introduced(member):
-		await welcome_channel.send(f"Welcome back, {member.mention}!")
-	else:
-		await welcome_channel.send(f"Hello {member.mention}! Please introduce yourself in {intro_channel.mention}. :wink:")
-
-	# Assign the "Chinese" role if the member’s name or nickname contains Chinese characters
-	if contains_chinese_characters(member.name) or (member.nick and contains_chinese_characters(member.nick)):
-		await assign_role(member, "Chinese", "Member's name or nickname contains Chinese characters.")
+		if contains_chinese_characters(member.name) or (member.nick and contains_chinese_characters(member.nick)):
+			await assign_role(member, "Chinese", "Member's name or nickname contains Chinese characters.")
 
 	try:
-		# Attempt to restore user if he exists in the database
-		if not await MyGlobals.db.restore_user_data(member):
-			# Add user to the database if he did not exist there
+		restored = await MyGlobals.db.restore_user_data(member)
+		if restored is None:
 			await MyGlobals.db.update_user_in_db(member.id, str(member), member.display_name, member.nick, member.guild.id, member.roles)
 	except discord.Forbidden:
-		await notification_channel(f"Missing permissions to edit roles/nickname for {member} in guild {member.guild.id}")
+		log.error(f"Missing permissions to edit roles/nickname for {member} in guild {member.guild.id}")
 	except sqlite3.Error as e:
-		await notification_channel(f"Database error for {member} in guild {member.guild.id}: {e}")
+		log.error(f"Database error for {member} in guild {member.guild.id}: {e}")
 	except discord.HTTPException as e:
-		await notification_channel(f"Discord API error for {member} in guild {member.guild.id}: {e}")
+		log.error(f"Discord API error for {member} in guild {member.guild.id}: {e}")
 
 
 async def assign_role(member, role_name, reason):
@@ -136,6 +122,15 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 	"""Handle updates to a member's status, roles, or nickname."""
 
 	if before.guild.id != HF_GUILD_ID:
+		if before.roles != after.roles or before.nick != after.nick:
+			await MyGlobals.db.update_user_in_db(
+				after.id,
+				str(after),
+				after.display_name,
+				after.nick,
+				after.guild.id,
+				after.roles
+			)
 		return
 
 	# Fetch the notification channel
@@ -218,4 +213,3 @@ async def on_user_update(before: discord.Member, after: discord.Member):
 		return
 	if before.name != after.name or before.discriminator != after.discriminator or before.global_name != after.global_name:
 		await MyGlobals.db.update_user_global_name(after.id, str(after), after.display_name)
-

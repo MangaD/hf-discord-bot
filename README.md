@@ -77,6 +77,9 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **rl:** Prints the [HF Room List](http://herofighter-empire.com/hf-empire/multiplayer/room-list).
 
 - Moderation
+  - **saveguild** (alias **saveusers**): Saves a local guild backup of members, roles, channels, server settings, and bans.
+  - **guildbackup** (alias **viewguild**): DMs administrators an interactive viewer for the latest backup, with sections for roles, channels, members, and bans.
+  - **restoreguild:** Restores the latest backup additively, including automatically restoring saved member roles and nicknames when they rejoin.
   - **bandit:** Gives the Bandit role to a user in the Hero Fighter server, even if the user rejoins the server.
   - **spamconfig:** View or configure per-guild anti-spam settings (`show`, `set`, `reset`).
   - **setnick:** Changes the bot's display name (nickname) in the current guild.
@@ -87,6 +90,8 @@ If using the random phrases feature, create a `random_phrases.txt` file in the r
   - **setaccountavatar:** Changes the bot account avatar (owner only).
   - **setaccountbanner:** Changes the bot account banner (owner only).
   - **setaccountbio:** Reports that account bio changes are currently unsupported by the installed Discord library (owner only).
+
+Guild backups are stored locally in `guild_users.db`, with one latest snapshot per guild. The bot needs the privileged Server Members intent enabled and the Ban Members permission to capture member and ban lists. Recovery requires Manage Roles, Manage Channels, Manage Guild, and Ban Members, with the bot role above roles it must manage. Recovery does not delete roles or channels absent from the backup. Discord message and forum-post history, attachments, integrations, webhooks, stickers, community configuration, and guild/role image assets are not included. Members whose roles are above the bot's highest role (including the guild owner) are skipped. Automatic member restoration applies saved nicknames and roles that still exist; run `.restoreguild` first if roles or other guild structure need to be recreated.
 
 - Utilities
   - **ud:** Look up a word on UrbanDictionary.

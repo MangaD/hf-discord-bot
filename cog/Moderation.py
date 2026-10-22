@@ -5,6 +5,199 @@ from discord.ext import commands
 import sqlite3
 import asyncio
 import aiohttp
+from .guild_backup import capture_guild, restore_guild
+
+
+class GuildBackupSelect(discord.ui.Select):
+	def __init__(self, view):
+		self.backup_view = view
+		options = [
+			discord.SelectOption(label=label, value=key)
+			for key, label in view.categories
+		]
+		super().__init__(
+			placeholder="Choose a backup section",
+			min_values=1,
+			max_values=1,
+			options=options
+		)
+
+	async def callback(self, interaction):
+		self.backup_view.category = self.values[0]
+		self.backup_view.page = 0
+		await self.backup_view.update(interaction)
+
+
+class GuildBackupPageButton(discord.ui.Button):
+	def __init__(self, direction):
+		self.direction = direction
+		super().__init__(
+			label="Previous" if direction < 0 else "Next",
+			style=discord.ButtonStyle.secondary
+		)
+
+	async def callback(self, interaction):
+		view = self.view
+		view.page += self.direction
+		await view.update(interaction)
+
+
+class GuildBackupView(discord.ui.View):
+	categories = (
+		("overview", "Overview"),
+		("roles", "Roles"),
+		("channels", "Channels"),
+		("members", "Members"),
+		("bans", "Bans"),
+	)
+
+	def __init__(self, snapshot, saved_at, owner_id):
+		super().__init__(timeout=180)
+		self.snapshot = snapshot
+		self.saved_at = saved_at
+		self.owner_id = owner_id
+		self.category = "overview"
+		self.page = 0
+		self.pages = self._build_pages()
+		self.message = None
+		self.add_item(GuildBackupSelect(self))
+		self.previous_button = GuildBackupPageButton(-1)
+		self.next_button = GuildBackupPageButton(1)
+		self.add_item(self.previous_button)
+		self.add_item(self.next_button)
+		self._update_controls()
+
+	async def interaction_check(self, interaction):
+		if interaction.user.id != self.owner_id:
+			await interaction.response.send_message(
+				"Only the administrator who opened this backup viewer can use it.",
+				ephemeral=True
+			)
+			return False
+		return True
+
+	async def update(self, interaction):
+		self._update_controls()
+		await interaction.response.edit_message(
+			embed=self.pages[self.category][self.page],
+			view=self
+		)
+
+	async def on_timeout(self):
+		for item in self.children:
+			item.disabled = True
+		if self.message is not None:
+			await self.message.edit(view=self)
+
+	def _build_pages(self):
+		roles = self.snapshot["roles"]
+		channels = self.snapshot["channels"]
+		members = self.snapshot["members"]
+		bans = self.snapshot["bans"]
+		role_names = {role["id"]: role["name"] for role in roles}
+
+		pages = {"overview": [self._overview_embed(roles, channels, members, bans)]}
+		pages["roles"] = self._item_pages(
+			"Saved Roles",
+			[
+				f"**{role['name']}** · ID `{role['id']}` · position {role['position']}"
+				+ (" · managed" if role["managed"] else "")
+				for role in roles
+			]
+		)
+		pages["channels"] = self._item_pages(
+			"Saved Channels",
+			[
+				f"**{channel['name']}** · {channel['type']} · ID `{channel['id']}`"
+				+ (f" · category ID `{channel['category_id']}`" if channel["category_id"] else "")
+				for channel in channels
+			]
+		)
+		pages["members"] = self._item_pages(
+			"Saved Members",
+			[
+				f"**{member['display_name']}** (`{member['username']}`) · ID `{member['user_id']}`"
+				+ (f" · nickname: {member['nick']}" if member["nick"] else "")
+				+ (
+					" · roles: " + ", ".join(
+						role_names[role_id]
+						for role_id in member["roles"]
+						if role_id in role_names
+					)
+					if any(role_id in role_names for role_id in member["roles"])
+					else ""
+				)
+				for member in members
+			]
+		)
+		pages["bans"] = self._item_pages(
+			"Saved Bans",
+			[
+				f"**{ban['username']}** · ID `{ban['user_id']}`"
+				+ (f" · reason: {ban['reason']}" if ban["reason"] else "")
+				for ban in bans
+			]
+		)
+		return pages
+
+	def _overview_embed(self, roles, channels, members, bans):
+		guild = self.snapshot["guild"]
+		verification = discord.VerificationLevel(guild["verification_level"]).name.replace("_", " ").title()
+		notifications = discord.NotificationLevel(guild["default_notifications"]).name.replace("_", " ").title()
+		embed = discord.Embed(
+			title=f"Guild Backup: {guild['name']}",
+			description=f"Latest saved snapshot · `{self.saved_at}`",
+			color=discord.Color.blue()
+		)
+		embed.add_field(
+			name="Saved data",
+			value=(
+				f"Members: **{len(members)}**\n"
+				f"Roles: **{len(roles)}**\n"
+				f"Channels: **{len(channels)}**\n"
+				f"Bans: **{len(bans)}**"
+			),
+			inline=True
+		)
+		embed.add_field(
+			name="Server settings",
+			value=(
+				f"Verification: **{verification}**\n"
+				f"Default notifications: **{notifications}**\n"
+				f"AFK timeout: **{guild['afk_timeout']} sec**\n"
+				f"Preferred locale: **{guild['preferred_locale']}**\n"
+				f"System channel: {self._channel_mention(guild['system_channel_id'])}\n"
+				f"Rules channel: {self._channel_mention(guild['rules_channel_id'])}\n"
+				f"Public updates: {self._channel_mention(guild['public_updates_channel_id'])}\n"
+				f"AFK channel: {self._channel_mention(guild['afk_channel_id'])}"
+			),
+			inline=True
+		)
+		return embed
+
+	@staticmethod
+	def _channel_mention(channel_id):
+		return f"<#{channel_id}>" if channel_id else "Not set"
+
+	def _item_pages(self, title, items):
+		chunks = [items[index:index + 8] for index in range(0, len(items), 8)] or [
+			["No saved entries."]
+		]
+		return [
+			discord.Embed(
+				title=title,
+				description="\n".join(item[:450] for item in chunk),
+				color=discord.Color.blue()
+			)
+			for chunk in chunks
+		]
+
+	def _update_controls(self):
+		pages = self.pages[self.category]
+		self.previous_button.disabled = self.page <= 0
+		self.next_button.disabled = self.page >= len(pages) - 1
+		for index, embed in enumerate(pages):
+			embed.set_footer(text=f"Page {index + 1} of {len(pages)}")
 
 
 class Moderation(commands.Cog):
@@ -14,62 +207,121 @@ class Moderation(commands.Cog):
 		self.client = client
 
 	@commands.command(
+		name="saveguild",
+		aliases=["saveusers"],
 		description=(
-			"Saves all users to the local database.\n"
-			"Usage: `.saveusers`\n"
+			"Backs up member data, roles, channels, server settings, and bans.\n"
+			"Usage: `.saveguild` (also available as `.saveusers`)"
 		)
 	)
-	@hf_guild_only()
+	@commands.guild_only()
 	@commands.has_permissions(administrator=True)  # Restrict to Administrators
-	async def saveusers(self, ctx):
-
-		# Check if user using the command has administrator permissions
-		if not ctx.author.guild_permissions.administrator:
-			await ctx.channel.send(f"**{ctx.author.display_name}:** You lack permission to use this command. :angry:")
-			return
-
-		# Check if the bot has permission to access members
-		if not ctx.guild.me.guild_permissions.view_audit_log:  # Proxy for member access
-			await ctx.send("I don't have permission to view member data!")
-			return
-
+	async def saveguild(self, ctx):
 		try:
-			# Connect to SQLite database (creates file if it doesn't exist)
-			conn = sqlite3.connect(MyGlobals.db.FILE_NAME)
-			cursor = conn.cursor()
-
-			# Clear existing data for this guild to avoid duplicates
-			cursor.execute('DELETE FROM users WHERE guild_id = ?', (ctx.guild.id,))
-
-			# Fetch all members in the guild
-			member_count = 0
-			async for member in ctx.guild.fetch_members(limit=None):
-				# Skip the bot itself
-				if member == ctx.guild.me:
-					continue
-
-				# Get role IDs (excluding @everyone)
-				role_ids = [str(role.id) for role in member.roles if role != ctx.guild.default_role]
-				roles_str = ','.join(role_ids) if role_ids else ''
-
-				# Insert user data into the table
-				cursor.execute('''
-					INSERT INTO users (user_id, username, display_name, nick, guild_id, roles)
-					VALUES (?, ?, ?, ?, ?, ?)
-				''', (member.id, str(member), member.display_name, member.nick, ctx.guild.id, roles_str))
-				member_count += 1
-
-			# Commit changes and close connection
-			conn.commit()
-			conn.close()
-
-			await ctx.send(f"Successfully saved information for {member_count} users to the database.")
+			snapshot = await capture_guild(ctx.guild)
+			users = [
+				(
+					member["user_id"],
+					member["username"],
+					member["display_name"],
+					member["nick"],
+					ctx.guild.id,
+					",".join(str(role_id) for role_id in member["roles"])
+				)
+				for member in snapshot["members"]
+			]
+			MyGlobals.db.save_guild_backup(
+				ctx.guild.id,
+				snapshot["created_at"],
+				snapshot,
+				users
+			)
+			await ctx.send(
+				f"Guild backup saved: {len(users)} members, "
+				f"{len(snapshot['roles'])} roles, {len(snapshot['channels'])} channels, "
+				f"and {len(snapshot['bans'])} bans."
+			)
 		except discord.Forbidden:
-			await ctx.send("I lack the permissions to access member data!")
+			await ctx.send(
+				"I lack permissions to read all members or bans. "
+				"Grant the bot the Server Members and Ban Members permissions, then retry."
+			)
 		except sqlite3.Error as e:
 			await ctx.send(f"An error occurred with the database: {e}")
-		except Exception as e:
-			await ctx.send(f"An unexpected error occurred: {e}")
+		except discord.HTTPException as e:
+			await ctx.send(f"Discord could not complete the backup: {e}")
+
+	@commands.command(
+		name="guildbackup",
+		aliases=["viewguild"],
+		description="Browse the latest saved guild backup."
+	)
+	@commands.guild_only()
+	@commands.has_permissions(administrator=True)
+	async def guildbackup(self, ctx):
+		try:
+			backup = MyGlobals.db.get_guild_backup(ctx.guild.id)
+		except (sqlite3.Error, ValueError) as e:
+			await ctx.send(f"Could not read the saved guild backup: {e}")
+			return
+		if backup is None:
+			await ctx.send("No guild backup was found. Run `.saveguild` first.")
+			return
+
+		saved_at, snapshot = backup
+		if snapshot.get("version") != 1:
+			await ctx.send("This guild backup uses an unsupported format version.")
+			return
+		view = GuildBackupView(snapshot, saved_at, ctx.author.id)
+		try:
+			view.message = await ctx.author.send(
+				embed=view.pages[view.category][view.page],
+				view=view
+			)
+		except discord.Forbidden:
+			await ctx.send(
+				"I couldn't DM you the backup viewer. Enable direct messages from "
+				"server members and try `.guildbackup` again."
+			)
+			return
+		await ctx.send("I sent the interactive guild backup viewer to your DMs.")
+
+	@commands.command(
+		description="Restores the latest saved roles, channels, settings, current members, and bans."
+	)
+	@commands.guild_only()
+	@commands.has_permissions(administrator=True)
+	async def restoreguild(self, ctx):
+		try:
+			backup = MyGlobals.db.get_guild_backup(ctx.guild.id)
+		except (sqlite3.Error, ValueError) as e:
+			await ctx.send(f"Could not read the saved guild backup: {e}")
+			return
+		if backup is None:
+			await ctx.send("No guild backup was found. Run `.saveguild` first.")
+			return
+
+		created_at, snapshot = backup
+		if snapshot.get("version") != 1:
+			await ctx.send("This guild backup uses an unsupported format version.")
+			return
+		try:
+			result = await restore_guild(ctx.guild, snapshot)
+			await ctx.send(
+				f"Guild recovery from {created_at} completed: "
+				f"{result['roles']} roles mapped, {result['channels']} channels mapped, "
+				f"{result['members']} members restored "
+				f"({result['skipped_members']} skipped due to role hierarchy), "
+				f"{result['bans']} bans reapplied."
+			)
+		except discord.Forbidden:
+			await ctx.send(
+				"Recovery stopped because the bot lacks permissions or its role is too low. "
+				"Grant Manage Roles, Manage Channels, Manage Guild, and Ban Members, "
+				"and place the bot role above the roles it must restore."
+			)
+		except discord.HTTPException as e:
+			await ctx.send(f"Discord stopped the recovery before it finished: {e}")
 
 	@commands.group(
 		invoke_without_command=True,
